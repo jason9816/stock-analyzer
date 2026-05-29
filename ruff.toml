@@ -1,0 +1,15 @@
+# Python 風格與檢查設定（PEP 8 為基礎）
+# 用法：ruff format .   # 自動格式化
+#       ruff check .    # 靜態檢查（--fix 自動修正）
+line-length = 100
+target-version = "py312"
+
+[lint]
+# E/W: pycodestyle, F: pyflakes（未使用 import/變數）, I: isort（import 排序）, UP: pyupgrade
+select = ["E", "W", "F", "I", "UP"]
+# E501（行過長）交給 formatter；長字串/中文註解無法自動換行，故不在 lint 報錯
+# E741：OHLC 慣例用 o/h/l/c 單字母（l=low），屬領域慣例，不視為模糊命名
+ignore = ["E501", "E741"]
+
+[format]
+quote-style = "preserve"   # 不強制改單雙引號（保留作者原意）
