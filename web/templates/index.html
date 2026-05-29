@@ -1,0 +1,785 @@
+{% extends "base.html" %}
+{% block title %}{% if market == 'tw' %}台股{% else %}美股{% endif %}技術分析報告{% endblock %}
+{% block head %}
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  /* Overview Table */
+  .overview-table { width:100%; border-collapse:collapse; margin-bottom:24px; background:var(--bg-card); border-radius:var(--radius-md); overflow:hidden; }
+  .overview-table th { font-family:var(--font-mono); background:var(--bg-elevated); padding:8px 12px; text-align:left; font-size:0.65rem; font-weight:600; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.8px; }
+  .overview-table td { font-family:var(--font-mono); padding:10px 12px; border-bottom:1px solid var(--border-subtle); font-size:0.82rem; color:var(--text-secondary); }
+  .overview-table tr:hover { background:rgba(59,130,246,0.04); cursor:pointer; }
+
+  /* Stock Section */
+  .stock-section { margin:0 0 12px; padding:20px; background:var(--bg-surface); border-radius:var(--radius-lg); border:1px solid var(--border-subtle); }
+  .stock-head { display:flex; align-items:center; gap:16px; margin-bottom:16px; flex-wrap:wrap; }
+  .stock-head h2 { font-size:1.3rem; color:var(--text-primary); }
+
+  .card h4 { font-family:var(--font-mono); color:var(--text-dim); font-size:0.7rem; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }
+  .card p { font-size:0.85rem; line-height:1.7; color:#cbd5e1; }
+
+  .chip-pill { background:var(--bg-card); border-radius:var(--radius-sm); padding:8px 12px; font-size:0.82rem; color:#cbd5e1; line-height:1.4; }
+
+  .lvl-table { width:100%; border-collapse:collapse; font-size:0.82rem; font-family:var(--font-mono); }
+  .lvl-table th { background:var(--bg-elevated); padding:6px 10px; text-align:left; color:var(--text-muted); font-size:0.68rem; }
+  .lvl-table td { padding:5px 10px; border-bottom:1px solid var(--border-subtle); }
+
+  details summary { cursor:pointer; color:var(--text-secondary); font-size:0.85rem; padding:8px 0; user-select:none; }
+
+  @media(max-width:768px) {
+    .stock-head { flex-direction:column; align-items:flex-start; }
+    div[style*="grid-template-columns"] { display:block!important; }
+    div[style*="grid-template-columns"] > * { margin-bottom:8px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- ── Header ── -->
+<div class="page-header">
+  <h1>{% if market == 'tw' %}台股{% else %}美股{% endif %}技術分析報告</h1>
+  <div class="subtitle">最後更新: {{ now }} | Data: Yahoo Finance</div>
+  <div class="nav-links">
+    {% if market == 'tw' and flags.US_MARKET %}<a href="/">美股</a>{% endif %}
+    {% if market != 'tw' and flags.TW_MARKET %}<a href="/tw">台股</a>{% endif %}
+    {% if flags.TRADING %}<a href="/trading">交易面板</a>{% endif %}
+  </div>
+  <div class="market-bar">
+    {% if market == 'tw' %}
+    <div class="market-pill">
+      <span class="label">加權指數 TAIEX</span>
+      <span class="val" style="color:#60a5fa;">{{ market_info.taiex.price }}</span>
+      <span style="font-size:0.75rem;color:{% if market_info.taiex.chg_pct >= 0 %}#4ade80{% else %}#f87171{% endif %};">{{ '%+.2f' % market_info.taiex.chg_pct }}%</span>
+    </div>
+    <div class="market-pill">
+      <span class="label">美元/台幣</span>
+      <span class="val" style="color:#c4b5fd;">{{ market_info.usdtwd }}</span>
+    </div>
+    {% else %}
+    <div class="market-pill">
+      <span class="label">S&P 500</span>
+      <span class="val" style="color:#60a5fa;">{{ market_info.sp500 }}</span>
+      <span style="font-size:0.75rem;color:{% if market_info.sp500_chg >= 0 %}#4ade80{% else %}#f87171{% endif %};">{{ '%+.2f' % market_info.sp500_chg }}%</span>
+    </div>
+    <div class="market-pill">
+      <span class="label">VIX 恐慌指數</span>
+      <span class="val" style="color:{% if market_info.vix != 'N/A' and market_info.vix > 25 %}#f87171{% elif market_info.vix != 'N/A' and market_info.vix > 18 %}#fbbf24{% else %}#4ade80{% endif %};">{{ market_info.vix }}</span>
+    </div>
+    <div class="market-pill">
+      <span class="label">美元指數 DXY</span>
+      <span class="val" style="color:#c4b5fd;">{{ market_info.dxy }}</span>
+    </div>
+    <div class="market-pill">
+      <span class="label">美10年債殖利率</span>
+      <span class="val" style="color:#fb923c;">{{ market_info.us10y }}%</span>
+    </div>
+    {% endif %}
+  </div>
+  <div style="margin-top:8px;display:flex;align-items:center;gap:10px;">
+    <button id="market-ai-btn" onclick="aiMarket()" style="background:#1e1b4b;color:#c4b5fd;border:1px solid #4c1d95;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78rem;">🤖 大盤 AI 分析</button>
+    <span id="market-ai-time" style="font-size:0.72rem;color:#64748b;">{% if market_ai %}更新於 {{ market_ai.timestamp[-8:-3] }}{% endif %}</span>
+  </div>
+  <div id="market-ai-box" style="{% if market_ai %}display:block;{% else %}display:none;{% endif %}margin-top:8px;padding:12px 16px;background:#0d1220;border:1px solid #2d3a6a;border-left:3px solid #fbbf24;border-radius:8px;font-size:0.85rem;color:#cbd5e1;line-height:1.7;white-space:pre-wrap;">{% if market_ai %}{{ market_ai.text }}{% endif %}</div>
+</div>
+
+
+<!-- ── 新增追蹤 ── -->
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+  <form action="{% if market == 'tw' %}/tw{% endif %}/add_custom" method="POST" style="display:flex;gap:8px;align-items:center;">
+    <input type="text" name="symbol" placeholder="{% if market == 'tw' %}輸入股票代號（如 2330）{% else %}輸入股票代號（如 AAPL）{% endif %}" style="background:#16213e;border:1px solid #1e2a4a;color:#e2e8f0;padding:8px 14px;border-radius:8px;font-size:0.85rem;width:200px;" />
+    <button type="submit" style="background:#312e81;color:#c4b5fd;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.85rem;">➕ 加入追蹤</button>
+  </form>
+</div>
+
+<!-- Category filter bar -->
+{% if categories %}
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
+  <button onclick="filterCategory('all')" class="cat-btn active" id="cat-all" 
+    style="padding:6px 14px;border-radius:20px;border:1px solid #3b82f6;background:#3b82f6;color:#fff;cursor:pointer;font-size:0.82rem;transition:all 0.2s;">全部 ({{ data|length }})</button>
+  {% for cat in categories %}
+  <button onclick="filterCategory('{{ cat }}')" class="cat-btn" id="cat-{{ cat }}"
+    style="padding:6px 14px;border-radius:20px;border:1px solid #334155;background:#1e293b;color:#94a3b8;cursor:pointer;font-size:0.82rem;transition:all 0.2s;">{{ cat }}</button>
+  {% endfor %}
+  <a href="{% if market == 'tw' %}/tw{% endif %}/classify_all?pwd=1357" style="margin-left:auto;font-size:0.72rem;color:#64748b;text-decoration:none;padding:4px 10px;border:1px solid #334155;border-radius:12px;" title="對尚未分類的股票執行 AI 分類">🤖 自動分類</a>
+</div>
+{% endif %}
+
+<!-- ── 🤖 AI 分析全局 JS ── -->
+
+<!-- Auto-Update Status Bar -->
+<div id="update-bar" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding:8px 14px;background:#1e293b;border-radius:8px;border:1px solid #334155;">
+  <div style="display:flex;align-items:center;gap:8px;">
+    <span id="update-spinner" style="display:none;animation:spin 1s linear infinite;">⏳</span>
+    <span id="update-status" style="font-size:0.82rem;color:#94a3b8;">
+      ⚡ 即時報價 {{ 'TWSE 官方' if market == 'tw' else 'Yahoo Finance' }}｜每 30 秒自動更新
+    </span>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <span id="update-counts" style="font-size:0.72rem;color:#475569;">{{ cached_count }}/{{ total_stocks }} 已快取</span>
+    <span style="font-size:0.68rem;color:#64748b;border-left:1px solid #334155;padding-left:8px;">
+      {% if market == 'tw' %}報價來源：TWSE 即時{% else %}報價延遲 ~15 分{% endif %}
+    </span>
+  </div>
+</div>
+<style>@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}</style>
+
+<!-- ── Overview Table ── -->
+<table class="overview-table">
+  <thead><tr>
+    <th>代號</th><th>名稱</th><th>現價</th><th>漲跌%</th><th>短線信號</th><th>中線趨勢</th><th>籌碼評分</th><th>最近壓力</th><th>最近支撐</th><th>操作判斷</th>
+  </tr></thead>
+  <tbody>
+  {% for s in data %}
+  <tr class="stock-card" data-category="{{ stock_meta.get(s.symbol, {}).get('category', '') }}" onclick="document.getElementById('s{{ s.symbol|replace(".","_") }}').scrollIntoView({behavior:'smooth'})">
+    <td><strong>{% if market == 'tw' %}{{ s.symbol|replace('.TW','')|replace('.TWO','') }}{% else %}{{ s.symbol }}{% endif %}</strong></td>
+    <td>{{ s.name }}</td>
+    <td style="font-weight:bold;">{{ currency }}{{ '{:,.0f}'.format(s.price) if market == 'tw' else s.price }}</td>
+    <td class="{% if s.chg_pct|default(0) >= 0 %}up{% else %}down{% endif %}" style="font-weight:bold;">{{ '%+.2f' % s.chg_pct|default(0) }}%</td>
+    <td style="font-weight:bold;color:{{ s.swing.signal_color|default('#94a3b8') }};white-space:nowrap;">{{ s.swing.signal|default('—') }} <span style="color:#64748b;font-size:0.72rem;">({{ s.swing.score|default(0) }})</span></td>
+    <td style="font-weight:bold;font-size:0.82rem;white-space:nowrap;color:{{ s.mid_trend.color|default('#94a3b8') }};">{{ s.mid_trend.label|default('—') }} <span style="color:#64748b;font-size:0.72rem;">({{ s.mid_trend.score|default(0) }})</span></td>
+    <td style="color:{{ s.chip_color|default('#94a3b8') }};font-weight:bold;white-space:nowrap;">{{ s.chip_lbl|default('—') }} <span style="color:#64748b;font-size:0.72rem;">({{ '%+d' % s.chip_score|default(0) }})</span></td>
+    <td class="up">{{ currency }}{{ '{:,.0f}'.format(s.nearest_p|default(0)) if market == 'tw' else s.nearest_p|default('—') }}</td>
+    <td class="down">{{ currency }}{{ '{:,.0f}'.format(s.nearest_s|default(0)) if market == 'tw' else s.nearest_s|default('—') }}</td>
+    <td><span style="padding:4px 10px;border-radius:12px;font-size:0.8rem;background:{{ s.status_bg|default('#1e293b') }};white-space:nowrap;">{{ s.status|default('載入中...') }}</span></td>
+  </tr>
+  {% endfor %}
+  {% for sym in page_symbols %}
+  {% if sym not in data|map(attribute='symbol')|list %}
+  <tr style="opacity:0.4;">
+    <td><strong>{% if market == 'tw' %}{{ sym|replace('.TW','')|replace('.TWO','') }}{% else %}{{ sym }}{% endif %}</strong></td>
+    <td colspan="9" style="color:#64748b;font-style:italic;">⏳ 等待更新中...</td>
+  </tr>
+  {% endif %}
+  {% endfor %}
+  </tbody>
+</table>
+
+<!-- ── Pagination ── -->
+{% if total_pages > 1 %}
+<div style="display:flex;justify-content:center;gap:8px;margin:16px 0;">
+  {% if page > 1 %}
+  <a href="?page={{ page - 1 }}" style="padding:6px 14px;background:#1e293b;color:#60a5fa;border:1px solid #334155;border-radius:6px;text-decoration:none;font-size:0.85rem;">← 上一頁</a>
+  {% endif %}
+  {% for p in range(1, total_pages + 1) %}
+  <a href="?page={{ p }}" style="padding:6px 12px;border-radius:6px;text-decoration:none;font-size:0.85rem;{% if p == page %}background:#3b82f6;color:#fff;border:1px solid #3b82f6;{% else %}background:#1e293b;color:#94a3b8;border:1px solid #334155;{% endif %}">{{ p }}</a>
+  {% endfor %}
+  {% if page < total_pages %}
+  <a href="?page={{ page + 1 }}" style="padding:6px 14px;background:#1e293b;color:#60a5fa;border:1px solid #334155;border-radius:6px;text-decoration:none;font-size:0.85rem;">下一頁 →</a>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- ── Stock Sections ── -->
+{% for s in data %}
+<details id="s{{ s.symbol|replace('.','_') }}" class="stock-section stock-card" data-category="{{ stock_meta.get(s.symbol, {}).get('category', '') }}" style="margin-bottom:12px;">
+  <summary style="cursor:pointer;padding:8px 0;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <div style="display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:1.2rem;font-weight:bold;color:#e2e8f0;">{% if market == 'tw' %}{{ s.symbol|replace('.TW','')|replace('.TWO','') }}{% else %}{{ s.symbol }}{% endif %}</span>
+        <span style="color:#94a3b8;font-size:0.85rem;">{{ s.name }}</span>
+      </div>
+      {% set meta = stock_meta.get(s.symbol, {}) %}
+      {% if meta %}
+      <div style="font-size:0.78rem;color:#94a3b8;margin-top:2px;">
+        {{ meta.get('description', '') }}
+        {% for tag in meta.get('tags', []) %}
+        <span style="background:#1e3a5f;color:#60a5fa;padding:2px 8px;border-radius:10px;font-size:0.7rem;margin-left:4px;">{{ tag }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    <span style="color:{{ s.status_color }};font-size:1.1rem;font-weight:bold;">{{ currency }}{{ '{:,.0f}'.format(s.price) if market == 'tw' else s.price }}</span>
+    <span class="{% if s.chg_pct >= 0 %}up{% else %}down{% endif %}" style="font-size:0.85rem;">{{ '%+.2f' % s.chg_pct }}%</span>
+    {% if s.premarket_price %}
+    <span style="font-size:0.75rem;padding:2px 6px;border-radius:4px;{% if s.premarket_chg_pct and s.premarket_chg_pct >= 0 %}background:#052e16;color:#4ade80;{% else %}background:#450a0a;color:#f87171;{% endif %}">盤前 ${{ '%.2f' % s.premarket_price }} ({{ '%+.2f' % (s.premarket_chg_pct or 0) }}%)</span>
+    {% elif s.postmarket_price %}
+    <span style="font-size:0.75rem;padding:2px 6px;border-radius:4px;{% if s.postmarket_chg_pct and s.postmarket_chg_pct >= 0 %}background:#052e16;color:#4ade80;{% else %}background:#450a0a;color:#f87171;{% endif %}">盤後 ${{ '%.2f' % s.postmarket_price }} ({{ '%+.2f' % (s.postmarket_chg_pct or 0) }}%)</span>
+    {% endif %}
+    <span style="font-size:0.8rem;font-weight:bold;color:{{ s.swing.signal_color }};">{{ s.swing.signal }}</span>
+    <span style="font-size:0.75rem;padding:3px 8px;border-radius:10px;background:{{ s.status_bg }};color:#f1f5f9;">{{ s.status }}</span>
+    <a href="{% if market == 'tw' %}/tw{% endif %}/refresh/{{ s.symbol }}" onclick="event.stopPropagation()" style="color:#64748b;text-decoration:none;font-size:0.8rem;margin-left:8px;" title="重新分析">🔄</a>
+    {% if updated_at and updated_at.get(s.symbol) %}
+    <span style="color:#475569;font-size:0.7rem;margin-left:4px;">更新: {{ updated_at[s.symbol] }}</span>
+    {% endif %}
+    <button id="ai-btn-{{ s.symbol|replace('.','_') }}" onclick="event.stopPropagation();aiAnalyze('{{ s.symbol }}')" style="margin-left:auto;background:#1e1b4b;color:#c4b5fd;border:1px solid #4c1d95;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:0.72rem;">🤖 AI 分析</button>
+    <a href="{% if market == 'tw' %}/tw{% endif %}/remove/{{ s.symbol }}" onclick="event.stopPropagation();return confirm('確定移除？')" style="font-size:0.7rem;color:#f87171;padding:3px 8px;border-radius:6px;border:1px solid #7f1d1d;text-decoration:none;">✕</a>
+  </summary>
+
+  <!-- AI 分析結果 -->
+  <div id="ai-box-{{ s.symbol|replace(".","_") }}" style="{% if ai_analysis.get(s.symbol) %}display:block;{% else %}display:none;{% endif %}margin:8px 0;padding:12px 16px;background:#0d1220;border:1px solid #2d3a6a;border-left:3px solid #c4b5fd;border-radius:8px;font-size:0.85rem;color:#cbd5e1;line-height:1.7;white-space:pre-wrap;">{% if ai_analysis.get(s.symbol) %}{{ ai_analysis[s.symbol].text }}{% endif %}</div>
+
+  <div class="stock-head" style="padding-top:8px;">
+    <span style="color:#64748b;font-size:0.85rem;">{{ s.sector }} | MktCap: {{ s.mkt_cap }}</span>
+    <span style="font-size:0.75rem;color:#94a3b8;padding:4px 10px;border-radius:12px;border:1px solid #334155;">{{ s.tag_line }}</span>
+  </div>
+
+  <!-- K-line + Volume -->
+  <!-- ★ 短線操作信號燈 ★ -->
+  <div style="background:linear-gradient(135deg,#0d1220,#1a1a3e);border:2px solid {{ s.swing.signal_color }};border-radius:12px;padding:20px;margin-bottom:16px;">
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <div style="font-size:1.8rem;">{{ s.swing.signal.split(' ')[0] }}</div>
+      <div>
+        <div style="font-size:1.2rem;font-weight:bold;color:{{ s.swing.signal_color }};">{{ s.swing.signal }} <span style="font-size:0.85rem;color:#94a3b8;">(信號分數: {{ s.swing.score }})</span></div>
+        <div style="font-size:1rem;color:#e2e8f0;margin-top:4px;">👉 {{ s.swing.action }}</div>
+      </div>
+    </div>
+    <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      {% for reason in s.swing.reasons %}
+      <div style="background:rgba(0,0,0,0.3);padding:8px 12px;border-radius:6px;font-size:0.82rem;line-height:1.5;color:#cbd5e1;border-left:3px solid {{ s.swing.signal_color }};">{{ reason }}</div>
+      {% endfor %}
+    </div>
+    <div style="margin-top:12px;display:flex;gap:12px;flex-wrap:wrap;font-size:0.78rem;color:#64748b;">
+      <span>RSI: {{ s.swing.details.rsi }} ({{ s.swing.details.rsi_trend }})</span>
+      <span>MACD柱: {{ s.swing.details.macd_hist }}</span>
+      <span>布林位置: {{ s.swing.details.bb_position }}%</span>
+      <span>連漲跌: {{ s.swing.details.streak }}天</span>
+      {% if s.swing.details.vol_price_diverge %}<span style="color:#f87171;">⚠️ 量價背離</span>{% endif %}
+      {% if s.swing.details.bb_squeeze %}<span style="color:#fbbf24;">⚠️ 布林收窄</span>{% endif %}
+    </div>
+  </div>
+
+  <!-- 短線 vs 中長線操作建議 -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0;">
+    <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:14px;border-top:3px solid {{ s.short_action_color }};">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <span style="font-size:0.85rem;font-weight:bold;color:#c4b5fd;">⚡ 短線操作</span>
+        <span style="font-size:0.8rem;padding:2px 8px;border-radius:8px;background:{{ s.short_action_color }}20;color:{{ s.short_action_color }};font-weight:bold;">{{ s.short_action }}</span>
+      </div>
+      <div style="font-size:0.82rem;color:#cbd5e1;line-height:1.7;">
+        <div>📍 進場：<span style="color:#e2e8f0;">{{ s.short_entry }}</span></div>
+        <div>🎯 目標：<span style="color:#4ade80;">{{ s.short_target }}</span></div>
+        <div>🛑 停損：<span style="color:#f87171;">{{ s.short_stop }}</span></div>
+        <div style="margin-top:6px;font-size:0.78rem;color:#94a3b8;">{{ s.short_note }}</div>
+      </div>
+    </div>
+    <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:14px;border-top:3px solid {{ s.mid_action_color }};">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <span style="font-size:0.85rem;font-weight:bold;color:#c4b5fd;">📈 中長線操作</span>
+        <span style="font-size:0.8rem;padding:2px 8px;border-radius:8px;background:{{ s.mid_action_color }}20;color:{{ s.mid_action_color }};font-weight:bold;">{{ s.mid_action }}</span>
+        <span style="font-size:0.78rem;padding:2px 8px;border-radius:8px;background:{{ s.mid_trend.color }}15;color:{{ s.mid_trend.color }};font-weight:bold;">{{ s.mid_trend.label }} ({{ s.mid_trend.score }})</span>
+      </div>
+      <div style="font-size:0.82rem;color:#cbd5e1;line-height:1.7;">
+        <div>📍 進場：<span style="color:#e2e8f0;">{{ s.mid_entry }}</span></div>
+        <div>🎯 目標：<span style="color:#4ade80;">{{ s.mid_target }}</span></div>
+        <div>🛑 停損：<span style="color:#f87171;">{{ s.mid_stop }}</span></div>
+        <div style="margin-top:6px;font-size:0.78rem;color:#94a3b8;">{{ s.mid_note }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 槓桿策略 -->
+  {% if s.lev_strategy %}
+  <div style="background:rgba(251,191,36,0.08);border-radius:10px;padding:14px;margin-bottom:12px;border-left:3px solid #f59e0b;">
+    <div style="font-size:0.82rem;font-weight:bold;color:#fbbf24;margin-bottom:8px;">⚡ 槓桿策略 <span style="font-weight:normal;color:#64748b;font-size:0.72rem;">{{ s.lev_etf }}（正股只買不賣，槓桿做波段）</span></div>
+    <p style="font-size:0.85rem;color:#e2e8f0;line-height:1.7;">{{ s.lev_strategy }}</p>
+  </div>
+  {% endif %}
+
+  <div id="kline-{{ s.symbol }}" style="height:420px;border-radius:8px;overflow:hidden;"></div>
+
+  <!-- Chip + Tech + Valuation grid -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin:16px 0;">
+    <!-- 籌碼面 -->
+    <div class="card">
+      <h4>🎯 籌碼面分析</h4>
+      <span style="font-size:1rem;font-weight:bold;color:{{ s.chip_color|default('#94a3b8') }};">{{ s.chip_lbl|default('—') }} {{ '%+d' % s.chip_score|default(0) }}</span>
+      <div style="background:rgba(0,0,0,0.2);border-radius:6px;padding:10px;margin:8px 0;font-size:0.82rem;line-height:1.6;color:#cbd5e1;">📝 {{ s.chip_summary|default('載入中...') }}</div>
+      <div class="pill">機構持股 <span class="v up">{{ s.inst_own|default(0) }}%</span></div>
+      <div class="pill">內部人 <span class="v neutral">{{ s.insider_own|default(0) }}%</span></div>
+      <div class="pill">空單比 <span class="v down">{{ s.short_pct }}%</span></div>
+      <div class="pill">空單天數 <span class="v neutral">{{ s.short_ratio }}</span></div>
+      <div class="pill">PCR <span class="v" style="color:{% if s.pcr > 1 %}#f87171{% elif s.pcr < 0.7 %}#4ade80{% else %}#fbbf24{% endif %};">{{ s.pcr }}</span></div>
+      <div class="pill">Beta <span class="v neutral">{{ s.beta }}</span></div>
+    </div>
+    <!-- 技術面 -->
+    <div class="card">
+      <h4>📐 技術指標</h4>
+      <div class="pill">RSI(14) <span class="v" style="color:{% if s.rsi != 'N/A' and s.rsi > 70 %}#f87171{% elif s.rsi != 'N/A' and s.rsi < 30 %}#4ade80{% else %}#fbbf24{% endif %};">{{ s.rsi }}</span></div>
+      <div class="pill">MACD <span class="v {% if s.macd_val > s.macd_sig %}up{% else %}down{% endif %}">{{ s.macd_cross }}</span></div>
+      <div class="pill">MACD柱 <span class="v {% if s.macd_hist_val > 0 %}up{% else %}down{% endif %}">{{ s.macd_hist_val }}</span></div>
+      <div class="pill">量能 <span class="v neutral">{{ s.vol_trend }}({{ s.vol_ratio }}x)</span></div>
+      <div class="pill">52W位置 <span class="v neutral">{{ s.w52_pos }}%</span></div>
+      <div style="margin-top:8px;font-size:0.78rem;color:#64748b;">
+        MA5: ${{ '%.2f' % s.price if s.ma5[-1] is none else '%.2f' % s.ma5[-1] }} |
+        MA10: {{ '%.2f' % s.ma10[-1] if s.ma10[-1] else 'N/A' }} |
+        MA20: {{ '%.2f' % s.ma20[-1] if s.ma20[-1] else 'N/A' }} |
+        MA60: {{ '%.2f' % s.ma60[-1] if s.ma60[-1] else 'N/A' }}
+      </div>
+    </div>
+    <!-- 估值 -->
+    <div class="card">
+      <h4>💰 估值與基本面</h4>
+      <div class="pill">P/E(TTM) <span class="v neutral">{{ s.pe }}</span></div>
+      <div class="pill">Forward P/E <span class="v neutral">{{ s.fwd_pe }}</span></div>
+      <div class="pill">P/B <span class="v neutral">{{ s.pb }}</span></div>
+      <div class="pill">殖利率 <span class="v up">{{ s.div_yield }}%</span></div>
+      <div class="pill">52W High <span class="v up">${{ s.w52h }}</span></div>
+      <div class="pill">52W Low <span class="v down">${{ s.w52l }}</span></div>
+    </div>
+  </div>
+
+  <!-- 操作建議 -->
+  <div class="card" style="border-left:3px solid {{ s.status_color }};">
+    <h4>📋 操作建議</h4>
+
+    <!-- ★ 綜合研判（三指標組合分析）★ -->
+    <div style="background:linear-gradient(135deg,#0d1220,#111827);border:1px solid #2d3a6a;border-radius:10px;padding:18px;margin-bottom:16px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+        <span style="font-size:0.85rem;padding:4px 10px;border-radius:12px;background:{{ s.status_bg|default('#1e293b') }};color:{{ s.status_color|default('#94a3b8') }};">趨勢: {{ s.status|default('載入中') }}</span>
+        <span style="font-size:0.85rem;padding:4px 10px;border-radius:12px;background:rgba(0,0,0,0.3);color:{{ s.swing.signal_color|default('#94a3b8') }};">信號: {{ s.swing.signal|default('—') }} ({{ s.swing.score|default(0) }})</span>
+        <span style="font-size:0.85rem;padding:4px 10px;border-radius:12px;background:rgba(0,0,0,0.3);color:{{ s.chip_color|default('#94a3b8') }};">{{ s.chip_lbl|default('—') }} ({{ '%+d' % s.chip_score|default(0) }})</span>
+      </div>
+      {% for line in s.verdict.split('\n') %}
+      {% if line.strip() %}
+      <p style="font-size:0.92rem;line-height:1.8;color:#e2e8f0;margin:8px 0;{% if '白話建議' in line %}font-weight:bold;{% endif %}{% if '🚨' in line or '⚠️' in line %}color:#fbbf24;{% endif %}">{{ line }}</p>
+      {% endif %}
+      {% endfor %}
+    </div>
+
+    <details>
+      <summary>▶ 技術面詳細分析（進階）</summary>
+      <div style="margin-top:10px;">
+        <p><strong style="color:#4ade80">積極做法：</strong>{{ s.aggressive }}</p>
+        <p style="margin-top:8px;"><strong style="color:#fbbf24">保守做法：</strong>{{ s.conservative }}</p>
+        <p style="margin-top:8px;"><strong style="color:#f87171">風險提示：</strong>{{ s.risk }}</p>
+      </div>
+    </details>
+    {% if s.sell_signal %}
+    <div style="margin-top:10px;padding:10px 14px;background:#1e1b4b;border-left:3px solid #818cf8;border-radius:6px;font-size:0.82rem;color:#c4b5fd;line-height:1.6;">{{ s.sell_signal }}</div>
+    {% endif %}
+  </div>
+
+  <!-- 支撐壓力表格 (collapsible) -->
+  <details style="margin-top:12px;">
+    <summary>▶ 支撐壓力詳細表格</summary>
+    <div style="overflow-x:auto;margin-top:8px;">
+      <table class="lvl-table">
+        <thead><tr><th>#</th><th>價格</th><th>類型</th><th>距離%</th></tr></thead>
+        <tbody>
+        {% for lv in s.pressures %}
+        <tr>
+          <td>P{{ loop.index }}</td>
+          <td class="up">${{ lv.price }}</td>
+          <td>{{ lv.type }}</td>
+          <td class="up">+{{ lv.dist }}%</td>
+        </tr>
+        {% endfor %}
+        {% for lv in s.supports %}
+        <tr>
+          <td>S{{ loop.index }}</td>
+          <td class="down">${{ lv.price }}</td>
+          <td>{{ lv.type }}</td>
+          <td class="down">{{ lv.dist }}%</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+
+  <!-- 分析師 + 財報日 + 板塊比較 -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin:16px 0;">
+    <!-- 分析師評等 -->
+    <div class="card">
+      <h4>🏦 分析師評等</h4>
+      {% if s.recommend_key != 'N/A' %}
+      <div style="font-size:1.1rem;font-weight:bold;margin-bottom:8px;color:{% if s.recommend_key in ['buy','strong_buy'] %}#4ade80{% elif s.recommend_key == 'hold' %}#fbbf24{% else %}#f87171{% endif %};">
+        {{ s.recommend_key|upper }}
+      </div>
+      {% endif %}
+      <div class="pill">分析師數 <span class="v neutral">{{ s.num_analysts }}</span></div>
+      {% if s.target_mean %}
+      <div class="pill">平均目標價 <span class="v up">${{ s.target_mean }}</span></div>
+      <div class="pill">最高目標 <span class="v up">${{ s.target_high }}</span></div>
+      <div class="pill">最低目標 <span class="v down">${{ s.target_low }}</span></div>
+      {% if s.target_upside != None %}
+      <div style="margin-top:8px;padding:6px 12px;border-radius:6px;font-size:0.85rem;font-weight:bold;{% if s.target_upside > 0 %}background:#0b3d2e;color:#4ade80;{% else %}background:#3d0b0b;color:#f87171;{% endif %}">
+        目標價空間: {{ '%+.1f' % s.target_upside }}%
+      </div>
+      {% endif %}
+      {% endif %}
+      {% if s.rec_summary %}
+      <div style="margin-top:8px;font-size:0.78rem;color:#94a3b8;">
+        強力買入:{{ s.rec_summary.get('strongBuy',0) }} | 買入:{{ s.rec_summary.get('buy',0) }} | 持有:{{ s.rec_summary.get('hold',0) }} | 賣出:{{ s.rec_summary.get('sell',0) }} | 強力賣出:{{ s.rec_summary.get('strongSell',0) }}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- 財報日期 + 重要事件 -->
+    <div class="card">
+      <h4>📅 重要日期</h4>
+      {% if s.next_earnings %}
+      <div style="padding:10px;background:{% if s.earnings_days != None and s.earnings_days <= 14 %}rgba(251,191,36,0.15);border:1px solid #713f12{% else %}rgba(0,0,0,0.2){% endif %};border-radius:6px;margin-bottom:8px;">
+        <div style="font-size:0.8rem;color:#94a3b8;">下次財報日</div>
+        <div style="font-size:1.1rem;font-weight:bold;color:#fbbf24;">{{ s.next_earnings }}</div>
+        {% if s.earnings_days != None %}
+        <div style="font-size:0.8rem;color:{% if s.earnings_days <= 7 %}#f87171{% elif s.earnings_days <= 14 %}#fbbf24{% else %}#94a3b8{% endif %};">
+          {% if s.earnings_days > 0 %}剩餘 {{ s.earnings_days }} 天{% elif s.earnings_days == 0 %}⚠️ 今天！{% else %}已公布{% endif %}
+        </div>
+        {% endif %}
+      </div>
+      {% if s.earnings_days != None and s.earnings_days <= 14 and s.earnings_days > 0 %}
+      <div style="font-size:0.82rem;color:#fb923c;line-height:1.6;">⚠️ 財報將至，預期波動加大。建議：<br>• 不熟悉的股票避免財報前重倉<br>• 可考慮財報後再進場<br>• 持倉者設好停損防跳空</div>
+      {% endif %}
+      {% else %}
+      <div style="color:#64748b;font-size:0.85rem;">財報日期未公布</div>
+      {% endif %}
+    </div>
+
+    <!-- 板塊相對強度 -->
+    <div class="card">
+      <h4>📊 板塊相對強度</h4>
+      <div style="font-size:0.82rem;color:#94a3b8;margin-bottom:8px;">vs {{ s.sector_etf_name }} ({{ s.sector_etf }})</div>
+      {% if s.sector_perf %}
+      <table class="lvl-table" style="font-size:0.8rem;">
+        <thead><tr><th>期間</th><th>{{ s.symbol }}</th><th>{{ s.sector_etf }}</th><th>超額</th></tr></thead>
+        <tbody>
+        {% for period, perf in s.sector_perf.items() %}
+        <tr>
+          <td>{{ period }}</td>
+          <td class="{% if perf.stock >= 0 %}up{% else %}down{% endif %}">{{ '%+.1f' % perf.stock }}%</td>
+          <td class="{% if perf.etf >= 0 %}up{% else %}down{% endif %}">{{ '%+.1f' % perf.etf }}%</td>
+          <td style="font-weight:bold;" class="{% if perf.diff >= 0 %}up{% else %}down{% endif %}">{{ '%+.1f' % perf.diff }}%</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% if s.sector_perf.get('1M', {}).get('diff', 0) > 5 %}
+      <div style="margin-top:6px;font-size:0.78rem;color:#4ade80;">✓ 近月明顯跑贏板塊，相對強勢</div>
+      {% elif s.sector_perf.get('1M', {}).get('diff', 0) < -5 %}
+      <div style="margin-top:6px;font-size:0.78rem;color:#f87171;">✗ 近月明顯落後板塊，相對弱勢</div>
+      {% else %}
+      <div style="margin-top:6px;font-size:0.78rem;color:#94a3b8;">與板塊走勢接近</div>
+      {% endif %}
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- 📰 新聞面 -->
+  {% if s.news %}
+  <details style="margin-top:8px;" open>
+    <summary>📰 最新新聞（{{ s.news|length }} 則）</summary>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+      {% for n in s.news %}
+      <div style="background:#16213e;border:1px solid #1e2a4a;border-radius:8px;padding:12px;">
+        <a href="{{ n.link }}" target="_blank" style="color:#60a5fa;font-size:0.88rem;text-decoration:none;line-height:1.5;display:block;">{{ n.title }}</a>
+        <div style="font-size:0.72rem;color:#64748b;margin-top:4px;">{{ n.provider }} · {{ n.time }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+
+  <!-- Financial chart -->
+  {% if s.q_labels %}
+  <div id="fin-{{ s.symbol }}" style="height:260px;margin-top:16px;border-radius:8px;overflow:hidden;"></div>
+  {% endif %}
+
+  <!-- RSI + MACD chart -->
+  <div id="ind-{{ s.symbol }}" style="height:250px;margin-top:12px;border-radius:8px;overflow:hidden;"></div>
+</details>
+
+<script>
+(function(){
+  var sym = '{{ s.symbol }}';
+  var dates = {{ s.dates|tojson }};
+  var closes = {{ s.closes|tojson }};
+  var volumes = {{ s.volumes|tojson }};
+  var volColors = volumes.map(function(_,i){ return i>0 && closes[i]>=closes[i-1] ? 'rgba(74,222,128,0.5)' : 'rgba(248,113,113,0.5)'; });
+
+  // K-line + Volume
+  Plotly.newPlot('kline-'+sym, [
+    {x:dates, open:{{ s.opens|tojson }}, high:{{ s.highs|tojson }}, low:{{ s.lows|tojson }}, close:closes,
+     type:'candlestick', name:'Price', yaxis:'y', increasing:{line:{color:'#4ade80'}}, decreasing:{line:{color:'#f87171'}}},
+    {x:dates, y:{{ s.ma5|tojson }}, type:'scatter', mode:'lines', name:'MA5', line:{color:'#4ade80',width:1}, yaxis:'y'},
+    {x:dates, y:{{ s.ma10|tojson }}, type:'scatter', mode:'lines', name:'MA10', line:{color:'#60a5fa',width:1}, yaxis:'y'},
+    {x:dates, y:{{ s.ma20|tojson }}, type:'scatter', mode:'lines', name:'MA20', line:{color:'#fbbf24',width:1}, yaxis:'y'},
+    {x:dates, y:{{ s.ma60|tojson }}, type:'scatter', mode:'lines', name:'MA60', line:{color:'#c084fc',width:1}, yaxis:'y'},
+    {x:dates, y:{{ s.bb_upper|tojson }}, type:'scatter', mode:'lines', name:'BB上', line:{color:'#94a3b8',width:1,dash:'dot'}, yaxis:'y', showlegend:false},
+    {x:dates, y:{{ s.bb_lower|tojson }}, type:'scatter', mode:'lines', name:'BB下', line:{color:'#94a3b8',width:1,dash:'dot'}, yaxis:'y', showlegend:false},
+    {x:dates, y:volumes, type:'bar', name:'Vol', yaxis:'y2', marker:{color:volColors}}
+  ], {
+    paper_bgcolor:'#0d1220', plot_bgcolor:'#0d1220', font:{color:'#e2e8f0',size:10},
+    grid:{rows:2,columns:1,subplots:[['xy'],['xy2']],roworder:'top to bottom',pattern:'independent'},
+    xaxis:{rangeslider:{visible:false},gridcolor:'#1e2a4a',showgrid:false},
+    yaxis:{domain:[0.28,1],gridcolor:'#1e2a4a',side:'right'},
+    xaxis2:{gridcolor:'#1e2a4a',showgrid:false},
+    yaxis2:{domain:[0,0.22],gridcolor:'#1e2a4a',side:'right'},
+    margin:{t:10,b:30,l:10,r:55},showlegend:true,
+    legend:{orientation:'h',y:1.02,x:0,font:{size:9}},
+    shapes:[
+      {type:'line',y0:{{ s.nearest_s }},y1:{{ s.nearest_s }},x0:dates[Math.max(0,dates.length-25)],x1:dates[dates.length-1],xref:'x',yref:'y',line:{color:'#60a5fa',width:1.5,dash:'dash'}},
+      {type:'line',y0:{{ s.nearest_p }},y1:{{ s.nearest_p }},x0:dates[Math.max(0,dates.length-25)],x1:dates[dates.length-1],xref:'x',yref:'y',line:{color:'#fb923c',width:1.5,dash:'dash'}}
+    ],
+    annotations:[
+      {x:dates[dates.length-1],y:{{ s.nearest_s }},xref:'x',yref:'y',text:'S ${{ s.nearest_s }}',showarrow:false,font:{color:'#60a5fa',size:9},xanchor:'left',bgcolor:'rgba(13,18,32,0.9)',borderpad:2},
+      {x:dates[dates.length-1],y:{{ s.nearest_p }},xref:'x',yref:'y',text:'P ${{ s.nearest_p }}',showarrow:false,font:{color:'#fb923c',size:9},xanchor:'left',bgcolor:'rgba(13,18,32,0.9)',borderpad:2}
+    ]
+  },{responsive:true});
+
+  // RSI + MACD
+  var macdHColors = {{ s.macd_hist_data|tojson }}.map(function(v){return v>=0?'rgba(74,222,128,0.6)':'rgba(248,113,113,0.6)';});
+  Plotly.newPlot('ind-'+sym, [
+    {x:dates, y:{{ s.rsi_data|tojson }}, type:'scatter', mode:'lines', name:'RSI(14)', line:{color:'#c084fc',width:1.5}, yaxis:'y'},
+    {x:dates, y:{{ s.macd_data|tojson }}, type:'scatter', mode:'lines', name:'MACD', line:{color:'#60a5fa',width:1.5}, yaxis:'y3'},
+    {x:dates, y:{{ s.macd_signal_data|tojson }}, type:'scatter', mode:'lines', name:'Signal', line:{color:'#fb923c',width:1.5}, yaxis:'y3'},
+    {x:dates, y:{{ s.macd_hist_data|tojson }}, type:'bar', name:'MACD Hist', marker:{color:macdHColors}, yaxis:'y3'}
+  ], {
+    paper_bgcolor:'#0d1220', plot_bgcolor:'#0d1220', font:{color:'#e2e8f0',size:10},
+    grid:{rows:2,columns:1,subplots:[['xy'],['xy3']],roworder:'top to bottom',pattern:'independent'},
+    xaxis:{gridcolor:'#1e2a4a',showgrid:false},
+    yaxis:{domain:[0.55,1],gridcolor:'#1e2a4a',side:'right',title:'RSI'},
+    xaxis2:{gridcolor:'#1e2a4a',showgrid:false},
+    yaxis3:{domain:[0,0.45],gridcolor:'#1e2a4a',side:'right',title:'MACD'},
+    margin:{t:10,b:30,l:10,r:55},showlegend:true,
+    legend:{orientation:'h',y:1.02,x:0,font:{size:9}},
+    shapes:[
+      {type:'line',y0:70,y1:70,x0:dates[0],x1:dates[dates.length-1],xref:'x',yref:'y',line:{color:'#f87171',width:1,dash:'dot'}},
+      {type:'line',y0:30,y1:30,x0:dates[0],x1:dates[dates.length-1],xref:'x',yref:'y',line:{color:'#4ade80',width:1,dash:'dot'}},
+      {type:'line',y0:0,y1:0,x0:dates[0],x1:dates[dates.length-1],xref:'x2',yref:'y3',line:{color:'#475569',width:1}}
+    ]
+  },{responsive:true});
+
+  {% if s.q_labels %}
+  // Financial
+  var finTraces = [
+    {x:{{ s.q_labels|tojson }},y:{{ s.rev|tojson }},type:'bar',name:'Revenue(B$)',marker:{color:'rgba(96,165,250,0.6)'}},
+    {x:{{ s.q_labels|tojson }},y:{{ s.gm|tojson }},type:'scatter',name:'Gross Margin%',yaxis:'y2',line:{color:'#4ade80',width:2},mode:'lines+markers'}
+  ];
+  {% if s.nm %}
+  finTraces.push({x:{{ s.q_labels|tojson }},y:{{ s.nm|tojson }},type:'scatter',name:'Net Margin%',yaxis:'y2',line:{color:'#f472b6',width:2,dash:'dot'},mode:'lines+markers'});
+  {% endif %}
+  Plotly.newPlot('fin-'+sym, finTraces, {
+    paper_bgcolor:'#0d1220', plot_bgcolor:'#0d1220', font:{color:'#e2e8f0',size:10},
+    xaxis:{gridcolor:'#1e2a4a'},
+    yaxis:{title:'Revenue(B$)',gridcolor:'#1e2a4a'},
+    yaxis2:{title:'Margin%',overlaying:'y',side:'right'},
+    margin:{t:30,b:30,l:55,r:55},showlegend:true,
+    legend:{orientation:'h',y:1.15,font:{size:9}}
+  },{responsive:true});
+  {% endif %}
+})();
+</script>
+{% endfor %}
+
+<!-- ── Glossary for beginners ── -->
+<div class="card" style="margin-top:24px;">
+  <h4>📖 名詞解釋（股票新手必讀）</h4>
+  <dl class="glossary">
+    <dt>MA（均線）</dt><dd>過去 N 天收盤價平均值，用來判斷趨勢方向。MA5 是 5 日線（短線）、MA20 是月線（中線）、MA60 是季線（長線）。價格在均線上方代表趨勢偏多。</dd><br>
+    <dt>多頭排列</dt><dd>短期均線在長期均線上方（MA5 > MA10 > MA20 > MA60），代表上漲趨勢確立，適合做多。</dd><br>
+    <dt>RSI（相對強弱指數）</dt><dd>衡量漲跌動能的指標，範圍 0-100。> 70 表示「超買」（漲太多可能回檔），< 30 表示「超賣」（跌太多可能反彈）。</dd><br>
+    <dt>MACD</dt><dd>趨勢動能指標。「金叉」（MACD 線上穿信號線）為買入信號，「死叉」（下穿）為賣出信號。柱狀體由負轉正代表動能回升。</dd><br>
+    <dt>布林通道</dt><dd>價格在上下軌之間波動。觸及上軌可能過熱，觸及下軌可能超跌。通道收窄代表即將變盤。</dd><br>
+    <dt>支撐位</dt><dd>價格下方的「地板」，跌到這裡容易止跌反彈。跌破支撐可能加速下跌。</dd><br>
+    <dt>壓力位</dt><dd>價格上方的「天花板」，漲到這裡容易遇阻回落。突破壓力可能加速上漲。</dd><br>
+    <dt>PCR（Put/Call Ratio）</dt><dd>期權市場看跌/看漲的比例。> 1 代表市場偏避險（偏空），< 0.7 偏樂觀（偏多）。</dd><br>
+    <dt>空單比例</dt><dd>被借來賣出（看跌）的股票佔流通股比例。偏高代表市場看空情緒重，但也可能觸發「軋空」（空頭回補推升股價）。</dd><br>
+    <dt>Beta</dt><dd>股票相對大盤的波動度。Beta > 1 代表波動比大盤大（高風險高報酬），< 1 較穩定。</dd><br>
+    <dt>P/E（本益比）</dt><dd>股價 ÷ 每股盈餘。越高代表市場越看好未來成長，但也越「貴」。科技股通常 P/E 較高。</dd><br>
+    <dt>停損</dt><dd>預設的最大虧損價位，跌到就賣出，避免更大損失。紀律停損是投資最重要的規則。</dd><br>
+    <dt>停利</dt><dd>預設的獲利目標價位，到了就賣出鎖定利潤。「會賣才是師傅」。</dd><br>
+    <dt>量能</dt><dd>成交量的大小。上漲配合放量代表真突破，上漲但縮量可能是假突破。下跌縮量代表賣壓減輕。</dd><br>
+    <dt>52W 位置</dt><dd>目前價格在過去一年最高最低之間的相對位置。接近 100% 代表在高點附近，接近 0% 代表在低點。</dd><br>
+    <dt>分析師目標價</dt><dd>華爾街分析師預測的未來股價。「目標價空間」是平均目標價與現價的差距百分比，正數代表分析師認為還有上漲空間。</dd><br>
+    <dt>板塊相對強度</dt><dd>個股漲跌幅 vs 所屬板塊 ETF 漲跌幅的比較。「超額報酬」為正代表跑贏板塊（強勢股），為負代表落後板塊（弱勢股）。</dd><br>
+    <dt>財報日</dt><dd>公司公布季度營收的日期。財報前後股價波動通常較大，業績超預期會大漲，不如預期會大跌。新手建議避開財報日重倉。</dd><br>
+    <dt>短線信號燈</dt><dd>綜合 RSI、MACD柱方向、量價背離、布林帶位置等指標的計分系統。🟢(≥30分)=買進機會、🔴(≤-30分)=該停利了、🟡=留意中、⚪=觀望。分數越極端信號越強。</dd><br>
+    <dt>量價背離</dt><dd>股價創新高但成交量反而縮小，代表追買的人變少了，上漲可能撐不久。這是最重要的頂部預警信號之一。</dd><br>
+    <dt>MACD 柱狀體方向</dt><dd>柱子從大變小 = 趨勢動能在衰退（不管漲跌），這個比等金叉/死叉更早發出預警。柱子由負轉正 = 空頭動能耗盡、多頭開始。</dd>
+  </dl>
+</div>
+
+<!-- ── 短線信號系統說明 ── -->
+<div class="card" style="margin-top:24px;">
+  <h4>⚡ 短線信號系統說明（1-5 天波段操作）</h4>
+  <dl class="glossary">
+    <dt>🟠 短線信號是什麼？</dt><dd>綜合 7 層技術指標計算的即時計分系統（-100 ~ +100），告訴你<b>現在這個瞬間</b>是買入的好時機還是該離場。它不看趨勢方向，只看「時機」。</dd><br>
+
+    <dt>🟠 9 層架構怎麼算分？</dt><dd>
+    <b>Layer 0：基礎信號</b> — MACD 柱方向（放大/縮小）、金叉死叉、量價背離、布林帶位置、均線排列、連漲連跌天數<br>
+    <b>Layer 1：動量指標</b> — RSI 和 KD 取較極端的那個。RSI > 75 = 過熱扣分，RSI < 25 = 超賣加分<br>
+    <b>Layer 2：確認層</b> — OBV 背離確認 + K 線形態（錘子、吞噬、晨星等）。只有 Layer 1 有方向時才加分<br>
+    <b>Layer 3：價位層</b> — VWAP 支撐/壓力 + 費氏回撤位<br>
+    <b>Layer 4：MFI 過濾</b> — 資金流量極端值（> 80 過熱，< 20 超賣）<br>
+    <b>Layer 5：基本面</b> — 營收成長、獲利成長、分析師評等、目標價（±20 分上限）<br>
+    <b>Layer 6：題材事件</b> — 財報日倒數、板塊輪動、軋空題材（±15 分上限）<br>
+    <b style="color:#60a5fa;">Layer 7：ConnorsRSI</b> <span style="color:#94a3b8;">（2026 新增）</span> — 專為短線均值回歸設計，65-75% 勝率。RSI(3) + 連漲跌天數 RSI + 單日漲跌百分位。CRSI < 10 = 極度超賣（+12 分），CRSI > 90 = 極度過熱（-10 分）。<b>只在 SMA200 上方做多</b><br>
+    <b style="color:#60a5fa;">Layer 8：RVOL 量能確認</b> <span style="color:#94a3b8;">（2026 新增）</span> — 1800+ 突破事件回測：<b>RVOL 1.5-2.0x = 最佳確認</b>（+10 分），放量下跌 = 風險（-8 分），上漲無量 = 不可靠（-3 分）</dd><br>
+
+    <dt>🟠 ADX 乘數是什麼？</dt><dd>技術面分數會乘上 ADX 係數。ADX < 15（完全盤整）→ 乘 0.4，信號打四折；ADX > 40（強趨勢）→ 乘 1.2，信號加強。意思是：<b>沒有趨勢時，所有技術信號都不可信</b>。</dd><br>
+
+    <dt>🟠 信號等級怎麼看？</dt><dd>
+    <b style="color:#22c55e;">📈 強勢做多（≥70）</b> — 多指標共振，技術面強勢，可分批佈局<br>
+    <b style="color:#4ade80;">📈 偏多（≥50）</b> — 信號偏多，可考慮分批建倉<br>
+    <b style="color:#06b6d4;">📊 低接留意（30-49）</b> — 出現底部回升訊號，可開始關注（青色 ≠ 風險）<br>
+    <b style="color:#94a3b8;">➡️ 中性觀望（-14~14）</b> — 訊號不明確，等待更好機會<br>
+    <b style="color:#fb923c;">📉 偏弱（-15~-29）</b> — 頂部訊號浮現，可先減碼（橙色 = 警告）<br>
+    <b style="color:#f87171;">📉 弱勢離場（≤-30）</b> — 短線風險高，建議降低曝險</dd><br>
+
+    <dt>🟠 K 線形態有哪些？</dt><dd>
+    <b>🔨 錘子線</b> — 長下影線，止跌信號。在跌勢末端出現 +25 分，漲勢中只 +5 分（位置很重要！）<br>
+    <b>🌠 射擊之星</b> — 長上影線，反壓信號。在漲勢末端 -25 分<br>
+    <b>🐂 多頭吞噬</b> — 前黑後紅且完全包住，底部反轉 +18 分<br>
+    <b>🐻 空頭吞噬</b> — 前紅後黑且完全包住，頭部反轉 -18 分<br>
+    <b>⭐ 晨星</b> — 大陰 + 十字 + 大陽，底部強反轉 +22 分<br>
+    <b>🌙 夜星</b> — 大陽 + 十字 + 大陰，頭部強反轉 -22 分<br>
+    <b>💥 爆量</b> — 成交量 > 2 倍均量，配合 K 線方向加減 15-20 分</dd><br>
+
+    <dt>🟠 指標衝突檢測</dt><dd>當 RSI 和 MACD 方向矛盾、或布林帶位置和 RSI 分歧時，系統會自動偵測並扣分。例如：RSI 偏高但 MACD 柱為負 = 動能不一致，扣 5 分。<b>指標互相打架 = 信號不可靠</b>。</dd><br>
+
+    <dt>🟠 信號穩定度（信心指標）</dt><dd>看過去 5 天的 RSI 和 MACD 方向是否一致：<br>
+    <b style="color:#4ade80;">🟢 信號穩定</b>（≥75%）— 多指標方向一致，信號可靠<br>
+    <b style="color:#fbbf24;">🟡 信號普通</b>（50-75%）— 部分指標分歧<br>
+    <b style="color:#f87171;">🔴 信號不穩</b>（<50%）— 指標方向矛盾，可能是噪音</dd><br>
+
+    <dt>🟠 VIX 市場體制</dt><dd>大盤恐慌指數會影響所有信號的可信度：<br>
+    <b style="color:#4ade80;">🟢 正常（VIX 15-25）</b> — 標準權重<br>
+    <b style="color:#fb923c;">🟠 高波動（VIX 25-35）</b> — 技術信號打七折<br>
+    <b style="color:#f87171;">🔴 恐慌（VIX > 35）</b> — 技術信號打五折，風險權重 ×1.5<br>
+    <b style="color:#60a5fa;">🔵 低波動（VIX < 15）</b> — 過度樂觀，注意風險</dd>
+  </dl>
+</div>
+
+<!-- ── 籌碼面分析系統說明 ── -->
+<div class="card" style="margin-top:24px;">
+  <h4>🏦 籌碼面分析系統說明（大戶在幹嘛？）</h4>
+  <dl class="glossary">
+    <dt>🟣 籌碼分析是什麼？</dt><dd>看「聰明錢」（法人、機構、大戶、內部人）的動向。技術面告訴你價格怎麼走，籌碼面告訴你<b>誰在買、誰在賣</b>。大戶站多方 = 有靠山，回檔有人接；大戶出貨 = 小心崩盤。</dd><br>
+
+    <dt>🟣 籌碼分數怎麼算？（-100 ~ +100，<b>7+2 維度</b>）</dt><dd><br>
+    <b>① 機構持股比例</b>（±20）— 來源：Gompers & Metrick (2001)<br>
+    <span style="color:#4ade80;">• > 80% = +20</span> — 大型基金重倉，股價有「護城河」<br>
+    <span style="color:#4ade80;">• 60-80% = +12</span> — 法人認可<br>
+    <span style="color:#fbbf24;">• 40-60% = +5</span> — 中等水準<br>
+    <span style="color:#f87171;">• < 40% = -10</span> — 法人不愛，流動性可能差<br><br>
+    <b>② 空單 + DTC + 軋空偵測</b>（±25）— 來源：Desai et al. (2002)<br>
+    <span style="color:#4ade80;">• < 3% = +15</span> — 幾乎沒人看空<br>
+    <span style="color:#fbbf24;">• 5-10% = -5</span> — 看空情緒升溫<br>
+    <span style="color:#f87171;">• 10-20% = -15</span> — 高空單（每月異常報酬 -0.76~-1.13%）<br>
+    <span style="color:#a78bfa;">• DTC > 8 天</span> — 空頭極度擁擠。如果同時 <b>RSI 超賣 + MACD 翻正</b> → 🚀 <b>軋空潛力</b>，分數反轉加分！<br><br>
+    <b>③ PCR 含極端反轉</b>（±15）— <b style="color:#60a5fa;">升級：多到期日 + OI 混合</b><br>
+    <span style="color:#94a3b8;">計算方式</span>：前 3 個到期日加總，40% 交易量 + 60% 未平倉量（OI 更穩定）<br>
+    <span style="color:#4ade80;">• 0.5-0.8 = +15</span> — 適度樂觀，最健康<br>
+    <span style="color:#fbbf24;">• < 0.4 = -3</span> — 極度樂觀 = <b>反向過熱警告</b><br>
+    <span style="color:#f87171;">• 1.2-1.5 = -15</span> — 大量買 Put 避險<br>
+    <span style="color:#a78bfa;">• > 1.5 = +5</span> — 極度恐慌 = <b>反向底部信號</b>（所有人都在恐慌的時候，往往是底部）<br><br>
+    <b>④ Beta 波動係數</b>（±5）<br>
+    • < 1.0 = +5（穩健）｜> 2.0 = -5（暴漲暴跌，高風險）<br><br>
+    <b>⑤ 內部人交易</b>（±15）— 來源：Lakonishok & Lee (2001) → 2025 更新<br>
+    <span style="color:#4ade80;">• 大額密集買入 ≥2 筆 (>$100K) = +15</span> — <b>2025 升級：過濾 option exercise + 金額加權</b><br>
+    <span style="color:#4ade80;">• 密集買入 ≥3 筆 = +12</span> — Cluster buying 仍有效<br>
+    <span style="color:#f87171;">• 密集賣出 ≥5 筆 = -10</span> — 2023 Rule 10b5-1 修訂後賣出信號已減弱<br>
+    <span style="color:#a78bfa;">• 小型股加成</span> — 市值 < $2B 時內部人信號 ×1.5（學術共識：小型股 alpha 更強）<br>
+    <span style="color:#94a3b8;">• 自動過濾</span> — option exercise / conversion / award 等<b>非資訊性交易</b>已被過濾，只看真正的 open market purchase<br><br>
+    <b>⑥ 軋空額外加成</b>（+10）<br>
+    <span style="color:#a78bfa;">• 當高空單 + 技術面超賣 + 動能翻正同時出現</span> — 額外 +10 分，觸發 🚀 軋空潛力標籤<br><br>
+    <b style="color:#60a5fa;">⑦ 分析師 EPS Revision</b>（±15）<span style="color:#94a3b8;">（2026 新增）</span> — 來源：PEAD 2024-2025<br>
+    <span style="color:#4ade80;">• EPS 全面上修（無下修）= +8</span> — <b>學術最強基本面信號！</b>盈餘上修動量可持續 1-3 個月<br>
+    <span style="color:#4ade80;">• 分析師偏多（升級 > 降級 +2）= +5</span><br>
+    <span style="color:#f87171;">• EPS 全面下修（無上修）= -8</span> — 盈餘下修是最強的利空信號<br>
+    <span style="color:#f87171;">• 分析師偏空（降級 > 升級 +2）= -5</span><br><br>
+    <b style="color:#60a5fa;">SI + Insider 交互偵測</b> <span style="color:#94a3b8;">（2026 新增）</span> — 來源：2024 研究<br>
+    <span style="color:#fbbf24;">• 內部人買入 + 高空單(>15%) = ⚠️ 對峙股</span> — 信號衝突，扣 5 分<br>
+    <span style="color:#4ade80;">• 內部人買入 + 低空單(<5%) = ✅ 共識看多</span> — 最強組合，加 3 分</dd><br>
+
+    <dt>🟣 籌碼燈號怎麼看？</dt><dd>
+    <b style="color:#a78bfa;">🚀 軋空潛力</b> — 高空單 + 超賣 + MACD 翻正，空頭回補可能推升股價爆發<br>
+    <b style="color:#22c55e;">🟢 籌碼強勢（≥40）</b> — 法人重倉、空單低、內部人買入，最佳籌碼結構<br>
+    <b style="color:#4ade80;">🟢 籌碼偏多（20-39）</b> — 整體偏多，回檔有人接盤<br>
+    <b style="color:#94a3b8;">➡️ 籌碼中性（0-19）</b> — 沒有明顯偏向<br>
+    <b style="color:#fb923c;">📉 籌碼偏弱（-1~-20）</b> — 部分警訊，注意內部人動向<br>
+    <b style="color:#f87171;">🔴 籌碼偏空（< -20）</b> — 法人持股低 + 空單高 + 內部人賣出，<b>倉位不宜過重</b></dd><br>
+
+    <dt>🟣 內部人交易的學術演進</dt><dd>
+    <b style="color:#94a3b8;">經典研究（仍有效）：</b> Lakonishok & Lee (2001) 發現內部人買入月均超額 +0.5%；Kang et al. (2018) 發現 Cluster buying 效果翻倍達 +2%/月。<br>
+    <b style="color:#60a5fa;">2025 最新更新：</b><br>
+    • <b>Alpha Decay 研究</b>（2025）— 70-80% 的超額報酬發生在「交易日→公開申報日」之間（此時資訊還是非公開的），等散戶看到 Form 4 時 alpha 已大幅衰減<br>
+    • <b>Virginia Tech 研究</b>（JFQA 2025）— 內部人會利用「散戶注意力」擇時：散戶搜索量高時賣出、低時買入，利用情緒定價錯誤<br>
+    • <b>Rule 10b5-1 修訂</b>（2023 後）— 預設計畫交易的資訊含量下降，只有<b>非計畫性買入</b>才是真信號<br>
+    • <b>結論</b>：Cluster buying（多位 C-Suite 同期買入）仍然有效，但單筆內部人交易的 alpha 已經比 20 年前小很多<br>
+    <b style="color:#fbbf24;">我們的做法：只看「密集買入」（≥2 人），不依賴單筆交易。這是 2025 研究認可的最穩健策略。</b></dd><br>
+
+    <dt>🟣 什麼是軋空（Short Squeeze）？</dt><dd>
+    當空頭太多（空單比例 > 10%）+ 股價突然上漲 → 空頭被迫回補 → 推升股價 → 更多空頭回補 → 連鎖反應。<br>
+    <b>經典案例</b>：2021 年 GameStop（GME）$20 → $483。<br><br>
+    <b style="color:#60a5fa;">2024-2025 學術共識：</b><br>
+    • DTC 和空單比例<b>單獨不能預測</b>軋空 — 它們只是「燃料」，還需要「火花」（催化劑）<br>
+    • 軋空三要素：<b>① 高空單/高 DTC</b>（燃料）+ <b>② 借券困難/費用高</b>（約束）+ <b>③ 正面催化劑/散戶注意力飆升</b>（火花）<br>
+    • 高空單本身是<b>看空信號</b>（空頭通常是專業投資人，他們的判斷常常是對的）<br>
+    • 只有當三要素同時出現，高空單才從「利空」翻轉為「軋空機會」<br>
+    <span style="color:#a78bfa;">系統偵測 RSI 超賣 + MACD 翻正作為催化劑代理，配合高空單/高 DTC 觸發 🚀 標籤。</span></dd><br>
+
+    <dt>🟣 籌碼面和技術面怎麼搭配？</dt><dd>
+    <b style="color:#4ade80;">✅ 最佳</b> = 技術面多頭 + 籌碼偏多 + 內部人買入 → 三重確認，安全加碼<br>
+    <b style="color:#fbbf24;">⚠️ 注意</b> = 技術面多頭 + 內部人密集賣出 → 可能是頂部信號，大戶在倒貨<br>
+    <b style="color:#fbbf24;">🤔 觀察</b> = 技術面偏空 + 籌碼偏多 → 大戶還沒走，可能只是洗盤<br>
+    <b style="color:#a78bfa;">🚀 特殊</b> = 技術面超賣 + 高空單 + 動能翻正 → 軋空機會，可小倉位博反彈<br>
+    <b style="color:#f87171;">🚨 危險</b> = 技術面空頭 + 籌碼偏空 + 內部人賣出 → 三重利空，趕快離場</dd>
+  </dl>
+</div>
+
+<!-- ── 中期趨勢系統說明 ── -->
+<div class="card" style="margin-top:24px;">
+  <h4>📈 中期趨勢系統說明（Stage / Minervini / RS）</h4>
+  <dl class="glossary">
+    <dt>🔵 Weinstein Stage（階段分析）是什麼？</dt><dd>把股票的一生分成「春夏秋冬」四個階段，由 150 日均線（SMA150）的方向決定：<br>
+    <b style="color:#fbbf24;">Stage 1 底部打底🔄</b> — SMA150 走平或下降，股價在附近來回。像冬天，什麼都不做，等春天。<br>
+    <b style="color:#4ade80;">Stage 2 上升趨勢📈</b> — SMA150 上升，股價在上方。像夏天，<b>唯一應該買入的階段</b>。Minervini、CAN SLIM 都只在這階段操作。<br>
+    <b style="color:#fb923c;">Stage 3 做頭📉</b> — SMA150 走平，股價開始橫盤震盪。像秋天，該開始準備離場。<br>
+    <b style="color:#f87171;">Stage 4 下跌趨勢⬇️</b> — SMA150 下降，股價在下方。像冬天，<b>絕對不要買</b>，等跌完再說。</dd><br>
+
+    <dt>🔵 Minervini SEPA 8 項篩選</dt><dd>美股冠軍交易員 Mark Minervini 的趨勢模板，<b>8 項全過 = 頂尖趨勢股</b>。條件包括：股價在 SMA50/150/200 上方、均線正確排列（SMA50 > SMA150 > SMA200）、SMA200 上升中、距 52 週高點 25% 以內、距 52 週低點 30% 以上。能通過 8/8 的股票只佔全市場約 5%。</dd><br>
+
+    <dt>🔵 RS 相對強度 <span style="color:#60a5fa;">（升級：Mansfield RS）</span></dt><dd>
+    不再是簡單的「3個月超額報酬」，改用 <b>Mansfield RS</b>：將股價/大盤比值正規化到自己的 252 日均線。<br>
+    <b>MRS > 0</b> = 正在跑贏大盤 | <b>MRS 上升</b> = 加速跑贏（最佳狀態）<br>
+    優勢：跨股票可比較、消除量級差異、偵測到<b>加速vs減速</b>的微妙變化。</dd><br>
+
+    <dt>🔵 趨勢品質 <span style="color:#60a5fa;">（升級：Q + Efficiency Ratio）</span></dt><dd>
+    原有 Q-Indicator（淨位移/總路徑）加入 <b>Kaufman Efficiency Ratio</b>（60 日）取平均。<br>
+    ER ≈ 1 = 完美直線趨勢 | ER ≈ 0 = 極度震盪 | 兩者結合 = 更穩定的趨勢品質評估。</dd><br>
+
+    <dt>🔵 Stage 2 量能確認 <span style="color:#60a5fa;">（2026 新增）</span></dt><dd>
+    Stage 2 突破如果<b>沒有量能支撐</b>，容易是假突破。系統偵測 RVOL（最近 5 日 vs 20 日均量）：<br>
+    <span style="color:#4ade80;">RVOL > 1.5x</span> = 量能確認，突破有效 | <span style="color:#f87171;">RVOL < 0.7x</span> = 量能偏弱，扣 3 分</dd><br>
+
+    <dt>🔵 中線分數怎麼看？</dt><dd>六個維度加總 -100 ~ +100：<br>
+    ① <b>MA 排列</b>（±30）：均線是否正確排列 + 斜率是否向上<br>
+    ② <b>Mansfield RS</b>（±20）：正規化相對強度<br>
+    ③ <b>ADX 趨勢</b>（±15）：趨勢強不強 + 方向<br>
+    ④ <b>量能確認</b>（±15）：成交量有沒有跟上趨勢 + Stage 2 量能檢查<br>
+    ⑤ <b>動量 ROC</b>（±10）：1個月+3個月漲跌幅<br>
+    ⑥ <b>趨勢品質</b>（±10）：Q-Indicator + Efficiency Ratio 混合</dd><br>
+
+    <dt>🔵 短線 vs 中線怎麼搭配看？</dt><dd>
+    <b style="color:#4ade80;">⭐ 最佳買點</b> = 中線強勢（≥60）+ 短線買入（≥30）→ 趨勢 + 時機都到位，積極分批買進！<br>
+    <b style="color:#4ade80;">✅ 回檔加碼</b> = 中線強勢（≥60）+ 短線過熱/觀望 → 趨勢沒壞，短線拉回就是撿便宜的機會<br>
+    <b style="color:#fbbf24;">🟡 小心操作</b> = 中線觀望 + 短線買入 → 只能小量試單，設嚴格停損<br>
+    <b style="color:#f87171;">🚨 不要碰</b> = 中線空頭（< -10）→ 不管短線看起來多便宜，趨勢向下就是不碰</dd>
+  </dl>
+</div>
+
+<div class="card" style="margin-top:12px;">
+  <h4>🎯 一句話總結：怎麼用這套系統買股？</h4>
+  <p style="font-size:0.92rem;line-height:2;color:#e2e8f0;">
+    <b>1. 先看中線分數</b> — 只買中線 ≥ 30（偏多或強勢）的股票，中線 < 10 的不碰<br>
+    <b>2. 再看 Stage</b> — 只在 Stage 2（上升趨勢）買入，Stage 4（下跌）絕不抄底<br>
+    <b>3. 確認 Minervini</b> — 通過 ≥ 6/8 項才是好趨勢股，8/8 是精品<br>
+    <b>4. 等短線時機</b> — 中線確認好後，等短線信號 🟢（≥30 分）出現再進場<br>
+    <b>5. 設好停損</b> — 跌破 SMA50 減碼，跌破 SMA200 出場<br>
+    <b style="color:#fbbf24;">記住：中線決定「買不買」，短線決定「什麼時候買」</b>
+  </p>
+</div>
+
+<div style="text-align:center;padding:20px;color:#475569;font-size:0.75rem;">
+  ⚠️ 本報告僅供技術分析參考，不構成投資建議。投資有風險，請自行判斷。<br>
+  Data: Yahoo Finance | Generated: {{ now }}
+</div>
+
+<!-- ── Background Worker Status ── -->
+{% endblock %}
+
+{% block scripts %}
+<script>window.PAGE = {market: "{{ market }}"};</script>
+<script src="/static/index.js"></script>
+{% endblock %}

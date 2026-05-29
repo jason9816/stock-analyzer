@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Stock Analyzer{% endblock %}</title>
+<link rel="stylesheet" href="/static/theme.css">
+{% block head %}{% endblock %}
+</head>
+<body>
+<div class="container">
+{% block content %}{% endblock %}
+</div>
+<div id="toast"></div>
+<script src="/static/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

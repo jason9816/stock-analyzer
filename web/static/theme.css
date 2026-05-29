@@ -1,0 +1,404 @@
+/* ══════════════════════════════════════════════
+   Stock Analyzer — 共用設計系統
+   風格：Dark Mode (OLED) · 字體：Fira Code + Noto Sans TC
+   配色：藍（資料）+ 琥珀（重點/CTA）
+   ══════════════════════════════════════════════ */
+
+/* CJK 內容需要 Noto Sans TC（Fira Sans 無中文字形）；mono 用 Fira Code */
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap');
+
+:root {
+  /* Surface — 深黑 OLED 階層 */
+  --bg-root: #080b12;
+  --bg-surface: #0f1521;
+  --bg-card: #121a29;
+  --bg-card-hover: #16203273;
+  --bg-elevated: #1c2740;
+  --bg-input: #0c111c;
+
+  /* Borders */
+  --border-subtle: #1e293b;
+  --border-default: #334155;
+  --border-hover: #475569;
+
+  /* Text — 對比達 WCAG AA 以上 */
+  --text-primary: #e8eef7;
+  --text-secondary: #aab6c7;
+  --text-muted: #7c8aa0;
+  --text-dim: #5a6b85;
+
+  /* Accent */
+  --accent-blue: #60a5fa;
+  --accent-purple: #a78bfa;
+  --accent-cyan: #22d3ee;
+  --accent-amber: #f59e0b;       /* CTA / 重點高亮 */
+  --accent-amber-soft: rgba(245, 158, 11, 0.14);
+
+  /* Semantic */
+  --color-up: #4ade80;
+  --color-down: #f87171;
+  --color-warn: #fbbf24;
+  --color-info: #60a5fa;
+
+  /* Typography */
+  --font-sans: 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'Fira Code', 'Menlo', monospace;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* Motion — 150-250ms 微互動 */
+  --t-fast: 150ms;
+  --t-base: 220ms;
+
+  /* z-index scale */
+  --z-sticky: 10;
+  --z-nav: 20;
+  --z-overlay: 30;
+  --z-toast: 1000;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg-root);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 15px;             /* 行動裝置 ≥16px body：見 @media；桌機 15px */
+  line-height: 1.6;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent-blue); text-decoration: none; transition: color var(--t-fast); }
+a:hover { text-decoration: underline; }
+
+/* ── Accessibility：鍵盤焦點環（所有互動元素）── */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent-amber);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── 自訂深色捲軸 ── */
+* { scrollbar-width: thin; scrollbar-color: var(--border-default) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 6px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+
+/* ── Layout ── */
+.container { max-width: 1240px; margin: 0 auto; padding: 20px; }
+
+/* ── Page Header ── */
+.page-header {
+  background: linear-gradient(160deg, #121a29 0%, #0a0e16 100%);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 24px 28px;
+  margin-bottom: 24px;
+  position: relative;
+  overflow: hidden;
+}
+.page-header::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent-blue), var(--accent-amber), var(--accent-blue));
+  opacity: 0.7;
+}
+.page-header h1 {
+  font-family: var(--font-sans);
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
+}
+.page-header .subtitle {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+  font-family: var(--font-mono);
+}
+
+.nav-links {
+  display: flex;
+  gap: 12px;
+  font-size: 0.82rem;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.nav-links a {
+  color: var(--text-secondary);
+  padding: 8px 12px;            /* 觸控目標 */
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: border-color var(--t-base), color var(--t-base), background var(--t-base);
+}
+.nav-links a:hover {
+  border-color: var(--border-default);
+  color: var(--text-primary);
+  background: var(--bg-card);
+  text-decoration: none;
+}
+.nav-links a[aria-current="page"] { color: var(--accent-amber); border-color: var(--accent-amber); }
+
+/* ── Market Pills ── */
+.market-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+.market-pill {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  font-size: 0.82rem;
+  min-width: 120px;
+  transition: border-color var(--t-base);
+}
+.market-pill:hover { border-color: var(--border-default); }
+.market-pill .label {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.market-pill .val {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 1.1rem;
+  display: block;
+  margin-top: 3px;
+}
+
+/* ── Cards ── */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  transition: border-color var(--t-base), box-shadow var(--t-base);
+}
+.card:hover {
+  border-color: var(--border-default);
+  box-shadow: 0 0 16px rgba(96, 165, 250, 0.06);
+}
+.card h3 {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 8px;
+}
+.card .value { font-family: var(--font-mono); font-size: 1.5rem; font-weight: 700; }
+.card .sub { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
+
+/* ── Tables ── */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th {
+  font-family: var(--font-mono);
+  text-align: left;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  background: var(--bg-root);
+  z-index: var(--z-sticky);
+}
+.data-table td {
+  font-family: var(--font-mono);
+  padding: 10px 14px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  border-bottom: 1px solid rgba(30, 41, 59, 0.4);
+}
+.data-table tr { transition: background var(--t-fast); }
+.data-table tr:hover { background: rgba(96, 165, 250, 0.05); }
+.data-table .sym { font-weight: 700; color: var(--text-primary); font-size: 0.88rem; }
+
+/* ── Buttons（最小觸控目標 44px）── */
+.btn {
+  font-family: var(--font-mono);
+  min-height: 44px;
+  padding: 10px 18px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background var(--t-base), box-shadow var(--t-base), border-color var(--t-base), transform var(--t-base);
+}
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-primary {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: #fff;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3); }
+/* 琥珀 CTA — 主要行動呼籲 */
+.btn-cta {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #1a1206;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+.btn-cta:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(245, 158, 11, 0.3); }
+.btn-buy { background: #059669; color: #fff; }
+.btn-buy:hover { background: #047857; transform: translateY(-1px); }
+.btn-sell { background: #dc2626; color: #fff; }
+.btn-sell:hover { background: #b91c1c; transform: translateY(-1px); }
+.btn-sm { min-height: 32px; padding: 5px 12px; font-size: 0.72rem; border-radius: 5px; }
+.btn-ghost { background: transparent; border: 1px solid var(--border-default); color: var(--text-secondary); }
+.btn-ghost:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+
+/* ── Semantic Colors ── */
+.up { color: var(--color-up); }
+.down { color: var(--color-down); }
+.neutral { color: var(--color-warn); }
+
+/* ── Chip / Badge ── */
+.badge {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  letter-spacing: 0.3px;
+}
+.badge-green { background: rgba(4, 120, 87, 0.2); color: #34d399; border: 1px solid rgba(4, 120, 87, 0.3); }
+.badge-blue { background: rgba(59, 130, 246, 0.12); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.2); }
+.badge-amber { background: var(--accent-amber-soft); color: var(--accent-amber); border: 1px solid rgba(245, 158, 11, 0.3); }
+
+.pill {
+  font-family: var(--font-mono);
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  display: inline-block;
+  margin: 3px;
+}
+.pill .v { font-weight: 600; }
+
+/* ── Section ── */
+.section { margin-bottom: 24px; }
+.section h2 {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Forms ── */
+.form-input {
+  font-family: var(--font-mono);
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;            /* ≥16px on mobile via @media；桌機可小 */
+  outline: none;
+  transition: border-color var(--t-base);
+}
+.form-input:focus { border-color: var(--accent-blue); }
+.form-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ── Toast ── */
+#toast {
+  position: fixed; bottom: 20px; right: 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 12px 20px;
+  display: none; z-index: var(--z-toast);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  animation: toastSlide 0.3s ease;
+  max-width: 380px;
+  backdrop-filter: blur(8px);
+}
+@keyframes toastSlide {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* ── Glossary ── */
+.glossary {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  font-size: 0.82rem;
+  line-height: 2;
+  color: var(--text-secondary);
+}
+.glossary dt { color: var(--accent-purple); font-weight: 700; display: inline; }
+.glossary dd { display: inline; margin: 0 14px 0 0; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  body { font-size: 16px; }                 /* 行動裝置可讀字級 */
+  .container { padding: 12px; }
+  .card-grid { grid-template-columns: 1fr 1fr; }
+  .page-header { padding: 16px; }
+  .data-table td, .data-table th { padding: 6px 8px; font-size: 0.72rem; }
+  .form-input { font-size: 16px; }          /* 避免 iOS 聚焦放大 */
+}
+@media (max-width: 480px) {
+  .card-grid { grid-template-columns: 1fr; }
+}
+
+/* ── 尊重「減少動態」偏好 ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Overview Table（掃描/總覽共用）── */
+.overview-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; background: var(--bg-card); border-radius: var(--radius-md); overflow: hidden; }
+.overview-table th {
+  font-family: var(--font-mono); background: var(--bg-elevated); padding: 8px 12px; text-align: left;
+  font-size: 0.65rem; font-weight: 600; color: var(--text-dim); text-transform: uppercase;
+  letter-spacing: 0.8px; position: sticky; top: 0; z-index: var(--z-sticky);
+}
+.overview-table td { font-family: var(--font-mono); padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); font-size: 0.82rem; color: var(--text-secondary); }
+.overview-table tr { transition: background var(--t-fast); }
+.overview-table tr:hover { background: rgba(96, 165, 250, 0.05); cursor: pointer; }
+.empty { text-align: center; padding: 60px; color: var(--text-muted); font-size: 1rem; }

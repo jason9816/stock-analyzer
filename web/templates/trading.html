@@ -1,0 +1,360 @@
+{% extends "base.html" %}
+{% block title %}交易面板 — Paper Trading{% endblock %}
+{% block head %}
+<style>
+  /* Trade Form */
+  .trade-form {
+    background: linear-gradient(160deg, var(--bg-card) 0%, var(--bg-root) 100%);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+  .trade-form h2 { font-size: 1rem; margin-bottom: 16px; }
+  .form-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 12px; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group label { font-family: var(--font-mono); font-size: 0.65rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+  .form-group input, .form-group select {
+    font-family: var(--font-mono);
+    background: var(--bg-input); border: 1px solid var(--border-default); color: var(--text-primary);
+    padding: 8px 12px; border-radius: var(--radius-sm); font-size: 0.82rem; outline: none; min-width: 120px;
+    transition: border-color 0.2s;
+  }
+  .form-group input:focus, .form-group select:focus { border-color: var(--accent-blue); }
+
+  /* Alpaca tables inherit data-table styling */
+  table { width: 100%; border-collapse: collapse; }
+  th { font-family: var(--font-mono); text-align: left; font-size: 0.65rem; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.8px; padding: 8px 14px; border-bottom: 1px solid var(--border-subtle); }
+  td { font-family: var(--font-mono); padding: 10px 14px; font-size: 0.82rem; color: var(--text-secondary); border-bottom: 1px solid rgba(30,41,59,0.4); }
+  tr { transition: background 0.15s; }
+  tr:hover { background: rgba(59,130,246,0.04); }
+
+  @media(max-width:768px) { .form-row { flex-direction: column; } .card-grid { grid-template-columns: 1fr 1fr; } }
+
+  /* ═══ Strategy Tracking ═══ */
+
+  .strat-divider {
+    margin:40px 0 28px;
+    border:none;
+    height:1px;
+    background:linear-gradient(90deg, transparent, #3b82f6 20%, #8b5cf6 50%, #3b82f6 80%, transparent);
+    opacity:0.5;
+  }
+
+  .strat-header {
+    display:flex; align-items:baseline; justify-content:space-between; margin-bottom:20px;
+  }
+  .strat-header h2 {
+    font-family:'Noto Sans TC','Fira Code',sans-serif;
+    font-size:1.15rem; font-weight:700; letter-spacing:0.5px;
+    background:linear-gradient(135deg,#60a5fa,#a78bfa);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+    background-clip:text;
+  }
+  .strat-header .strat-meta {
+    font-family:'Fira Code',monospace; font-size:0.7rem; color:#475569;
+  }
+
+  .strat-group {
+    background:linear-gradient(160deg,#131a2b 0%,#0f1520 100%);
+    border:1px solid #1e293b;
+    border-radius:14px;
+    margin-bottom:18px;
+    overflow:hidden;
+    transition:border-color 0.3s, box-shadow 0.3s;
+    animation:stratFadeIn 0.4s ease both;
+  }
+  .strat-group:hover {
+    border-color:#334155;
+    box-shadow:0 0 24px rgba(59,130,246,0.06);
+  }
+  @keyframes stratFadeIn {
+    from { opacity:0; transform:translateY(12px); }
+    to { opacity:1; transform:translateY(0); }
+  }
+
+  .strat-group-head {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:16px 20px 14px;
+    border-bottom:1px solid #1a2236;
+  }
+  .strat-group-title {
+    font-family:'Noto Sans TC',sans-serif; font-size:0.92rem; font-weight:700; color:#e2e8f0;
+    display:flex; align-items:center; gap:10px;
+  }
+  .strat-group-title .strat-tag {
+    font-family:'Fira Code',monospace;
+    font-size:0.65rem; font-weight:600; letter-spacing:1px;
+    padding:3px 8px; border-radius:4px;
+    background:rgba(59,130,246,0.12); color:#60a5fa; border:1px solid rgba(59,130,246,0.2);
+  }
+  .strat-group-stats {
+    display:flex; gap:16px; align-items:center; font-family:'Fira Code',monospace; font-size:0.78rem;
+  }
+  .strat-group-stats .strat-val { color:#94a3b8; }
+  .strat-group-stats .strat-pnl { font-weight:600; }
+
+  .strat-section-label {
+    font-family:'Fira Code',monospace;
+    font-size:0.65rem; font-weight:600; letter-spacing:1.2px; text-transform:uppercase;
+    color:#475569; padding:12px 20px 6px; display:flex; align-items:center; gap:8px;
+  }
+  .strat-section-label::after {
+    content:''; flex:1; height:1px; background:#1e293b;
+  }
+
+  .strat-table { width:100%; border-collapse:collapse; }
+  .strat-table th {
+    font-family:'Fira Code',monospace;
+    text-align:left; font-size:0.65rem; font-weight:600; color:#475569;
+    text-transform:uppercase; letter-spacing:0.8px;
+    padding:6px 20px; border-bottom:1px solid #1a2236;
+  }
+  .strat-table td {
+    font-family:'Fira Code',monospace;
+    padding:10px 20px; font-size:0.8rem; color:#cbd5e1;
+    border-bottom:1px solid rgba(30,41,59,0.5);
+    transition:background 0.15s;
+  }
+  .strat-table tr:hover td { background:rgba(59,130,246,0.04); }
+  .strat-table .sym {
+    font-weight:700; color:#e2e8f0; font-size:0.85rem;
+  }
+  .strat-table .theme-tag {
+    font-size:0.7rem; color:#64748b; font-weight:400;
+  }
+
+  /* Score bar */
+  .score-cell { display:flex; align-items:center; gap:8px; }
+  .score-bar-bg {
+    width:60px; height:6px; background:#1e293b; border-radius:3px; overflow:hidden; flex-shrink:0;
+  }
+  .score-bar-fill {
+    height:100%; border-radius:3px; transition:width 0.6s cubic-bezier(0.16,1,0.3,1);
+  }
+  .score-num { font-weight:700; font-size:0.8rem; min-width:26px; }
+
+  /* Remove button */
+  .strat-remove {
+    background:transparent; border:1px solid transparent; color:#475569;
+    padding:3px 8px; border-radius:5px; cursor:pointer;
+    font-family:'Fira Code',monospace; font-size:0.68rem; font-weight:600;
+    transition:all 0.2s;
+  }
+  .strat-remove:hover {
+    border-color:#f87171; color:#f87171; background:rgba(248,113,113,0.08);
+  }
+
+  /* Position P&L chip */
+  .pnl-chip {
+    display:inline-flex; align-items:center; gap:4px;
+    padding:3px 8px; border-radius:6px; font-weight:600; font-size:0.78rem;
+  }
+  .pnl-chip.positive { background:rgba(74,222,128,0.1); color:#4ade80; }
+  .pnl-chip.negative { background:rgba(248,113,113,0.1); color:#f87171; }
+
+  .strat-empty {
+    padding:28px 20px; text-align:center;
+    font-family:'Noto Sans TC',sans-serif; font-size:0.85rem; color:#334155;
+  }
+  .strat-empty span { display:block; font-size:0.75rem; color:#283046; margin-top:6px; }
+
+  /* Stagger animation delays for groups */
+  .strat-group:nth-child(1) { animation-delay:0s; }
+  .strat-group:nth-child(2) { animation-delay:0.08s; }
+  .strat-group:nth-child(3) { animation-delay:0.16s; }
+  .strat-group:nth-child(4) { animation-delay:0.24s; }
+
+  @media(max-width:768px) {
+    .strat-group-head { flex-direction:column; gap:8px; align-items:flex-start; }
+    .strat-table td, .strat-table th { padding:8px 12px; font-size:0.72rem; }
+    .score-bar-bg { width:40px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+  <!-- Header -->
+  <div class="page-header">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <h1>交易面板</h1>
+        <div class="nav-links">
+          {% if flags.US_MARKET %}<a href="/">美股追蹤</a>{% endif %}
+          {% if flags.TW_MARKET %}<a href="/tw/">台股追蹤</a>{% endif %}
+        </div>
+      </div>
+      <span class="badge badge-green">PAPER TRADING</span>
+    </div>
+  </div>
+
+  <!-- Account Cards -->
+  <div class="card-grid">
+    <div class="card">
+      <h3>帳戶淨值</h3>
+      <div class="value" id="equity">${{ '${:,.2f}'.format(account.get('equity', 0)) if account.get('equity') else '—' }}</div>
+      <div class="sub">購買力: $<span id="buying-power">{{ '{:,.2f}'.format(account.get('buying_power', 0)) }}</span></div>
+    </div>
+    <div class="card">
+      <h3>可用現金</h3>
+      <div class="value">${{ '{:,.2f}'.format(account.get('cash', 0)) }}</div>
+      <div class="sub">帳戶狀態: {{ account.get('status', 'N/A') }}</div>
+    </div>
+    <div class="card">
+      <h3>今日損益</h3>
+      <div class="value {{ 'up' if account.get('pnl_today', 0) >= 0 else 'down' }}">
+        ${{ '{:+,.2f}'.format(account.get('pnl_today', 0)) }}
+      </div>
+      <div class="sub {{ 'up' if account.get('pnl_today_pct', 0) >= 0 else 'down' }}">
+        {{ '{:+.2f}'.format(account.get('pnl_today_pct', 0)) }}%
+      </div>
+    </div>
+    <div class="card">
+      <h3>持倉數</h3>
+      <div class="value">{{ positions|length }}</div>
+      <div class="sub">未實現損益: $<span id="total-pl">{{ '{:+,.2f}'.format(positions|sum(attribute='unrealized_pl') if positions else 0) }}</span></div>
+    </div>
+  </div>
+
+  <!-- Quick Trade Form -->
+  <div class="trade-form">
+    <h2>⚡ 快速下單</h2>
+    <div class="form-row">
+      <div class="form-group">
+        <label>股票代號</label>
+        <input type="text" id="trade-symbol" placeholder="AAPL" style="width:100px;">
+      </div>
+      <div class="form-group">
+        <label>數量</label>
+        <input type="number" id="trade-qty" value="1" min="0.01" step="1" style="width:80px;">
+      </div>
+      <div class="form-group">
+        <label>類型</label>
+        <select id="trade-type" onchange="document.getElementById('limit-group').style.display = this.value==='limit' ? 'flex' : 'none'">
+          <option value="market">市價單</option>
+          <option value="limit">限價單</option>
+        </select>
+      </div>
+      <div class="form-group" id="limit-group" style="display:none;">
+        <label>限價</label>
+        <input type="number" id="trade-limit" step="0.01" placeholder="150.00" style="width:100px;">
+      </div>
+      <button class="btn btn-buy" onclick="submitTrade('buy')">📈 買入</button>
+      <button class="btn btn-sell" onclick="submitTrade('sell')">📉 賣出</button>
+    </div>
+    <div id="trade-result" style="font-size:0.82rem;color:#94a3b8;margin-top:8px;"></div>
+  </div>
+
+  <!-- Positions -->
+  <div class="section">
+    <h2>📋 目前持倉</h2>
+    {% if positions %}
+    <table>
+      <thead>
+        <tr>
+          <th>代號</th><th>數量</th><th>均價</th><th>現價</th>
+          <th>市值</th><th>損益</th><th>損益%</th><th>今日</th><th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in positions %}
+        <tr>
+          <td><strong>{{ p.symbol }}</strong></td>
+          <td>{{ p.qty }}</td>
+          <td>${{ '{:.2f}'.format(p.avg_entry) }}</td>
+          <td>${{ '{:.2f}'.format(p.current_price) }}</td>
+          <td>${{ '{:,.2f}'.format(p.market_value) }}</td>
+          <td class="{{ 'up' if p.unrealized_pl >= 0 else 'down' }}" style="font-weight:bold;">
+            ${{ '{:+,.2f}'.format(p.unrealized_pl) }}
+          </td>
+          <td class="{{ 'up' if p.unrealized_plpc >= 0 else 'down' }}">
+            {{ '{:+.2f}'.format(p.unrealized_plpc) }}%
+          </td>
+          <td class="{{ 'up' if p.change_today >= 0 else 'down' }}">
+            {{ '{:+.2f}'.format(p.change_today) }}%
+          </td>
+          <td>
+            <button class="btn btn-sm btn-sell" onclick="closePosition('{{ p.symbol }}')">平倉</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="color:#64748b;font-size:0.85rem;">（無持倉）</p>
+    {% endif %}
+  </div>
+
+  <!-- Open Orders -->
+  <div class="section">
+    <h2>📝 未成交訂單
+      {% if orders %}<button class="btn btn-sm btn-ghost" onclick="cancelAll()" style="margin-left:8px;">取消全部</button>{% endif %}
+    </h2>
+    {% if orders %}
+    <table>
+      <thead>
+        <tr><th>代號</th><th>方向</th><th>數量</th><th>類型</th><th>限價</th><th>狀態</th><th>送出時間</th><th>操作</th></tr>
+      </thead>
+      <tbody>
+        {% for o in orders %}
+        <tr>
+          <td><strong>{{ o.symbol }}</strong></td>
+          <td class="{{ 'up' if o.side == 'buy' else 'down' }}">{{ '買入' if o.side == 'buy' else '賣出' }}</td>
+          <td>{{ o.qty }}</td>
+          <td>{{ o.type }}</td>
+          <td>{{ '$%.2f' % o.limit_price if o.limit_price else '—' }}</td>
+          <td>{{ o.status }}</td>
+          <td style="font-size:0.75rem;color:#64748b;">{{ o.submitted_at[:19] if o.submitted_at else '' }}</td>
+          <td><button class="btn btn-sm btn-ghost" onclick="cancelOrder('{{ o.id }}')">取消</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="color:#64748b;font-size:0.85rem;">（無未成交訂單）</p>
+    {% endif %}
+  </div>
+
+  <!-- Recent Trade Log -->
+  <div class="section">
+    <h2>📜 交易紀錄（最近 20 筆）</h2>
+    {% if recent_trades %}
+    <table>
+      <thead>
+        <tr><th>時間</th><th>代號</th><th>方向</th><th>數量</th><th>成交價</th><th>狀態</th><th>原因</th></tr>
+      </thead>
+      <tbody>
+        {% for t in recent_trades|reverse %}
+        <tr>
+          <td style="font-size:0.75rem;color:#64748b;">{{ t.get('timestamp', '')[:16] }}</td>
+          <td><strong>{{ t.get('symbol', '') }}</strong></td>
+          <td class="{{ 'up' if t.get('side') == 'buy' else 'down' }}">{{ '買入' if t.get('side') == 'buy' else '賣出' }}</td>
+          <td>{{ t.get('qty', '') }}</td>
+          <td>{{ '$%.2f' % t.filled_avg_price if t.get('filled_avg_price') else '—' }}</td>
+          <td>{{ t.get('status', '') }}</td>
+          <td style="font-size:0.75rem;color:#94a3b8;">{{ t.get('reason', '') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="color:#64748b;font-size:0.85rem;">（無交易紀錄）</p>
+    {% endif %}
+  </div>
+
+  {% if flags.STRATEGY %}
+  <!-- ═══ 策略追蹤 ═══ -->
+  <hr class="strat-divider">
+  <div class="strat-header">
+    <h2>策略追蹤</h2>
+    <span class="strat-meta" id="strategy-updated"></span>
+  </div>
+  <div id="strategy-container">
+    <div class="strat-empty">載入中...</div>
+  </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/trading.js"></script>
+{% endblock %}
