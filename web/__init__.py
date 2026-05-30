@@ -46,6 +46,11 @@ def create_app():
 
         app.register_blueprint(strategy_bp)
 
+    if flags['AI_CHAT']:
+        from web.blueprints.chat import bp as chat_bp
+
+        app.register_blueprint(chat_bp)
+
     if flags['BG_WORKERS']:
         from web.blueprints.workers_api import bp as workers_bp
 

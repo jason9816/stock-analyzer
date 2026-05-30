@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}AI 問答{% endblock %}
+{% block head %}
+<style>
+  .chat-log { display: flex; flex-direction: column; gap: 12px; margin: 16px 0; }
+  .chat-msg { padding: 12px 16px; border-radius: var(--radius-md); font-size: 0.9rem; line-height: 1.7; white-space: pre-wrap; max-width: 90%; }
+  .chat-msg.me { align-self: flex-end; background: var(--bg-elevated); border: 1px solid var(--border-default); }
+  .chat-msg.ai { align-self: flex-start; background: var(--bg-card); border: 1px solid var(--border-subtle); border-left: 3px solid var(--accent-amber); }
+  .chat-bar { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+  .chat-bar textarea { flex: 1; min-width: 220px; min-height: 48px; resize: vertical; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>AI 問答</h1>
+  <div class="subtitle">問 code 邏輯 / 資料邏輯 / 個股（密碼保護・唯讀）</div>
+  <div class="nav-links">
+    {% if flags.US_MARKET %}<a href="/">美股</a>{% endif %}
+    {% if flags.TW_MARKET %}<a href="/tw">台股</a>{% endif %}
+    {% if flags.TRADING %}<a href="/trading">交易面板</a>{% endif %}
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <label class="form-label" for="chat-pwd">存取密碼</label>
+  <input class="form-input" type="password" id="chat-pwd" placeholder="WEB_PASSWORD" style="width:200px;margin-top:6px;display:block;">
+</div>
+
+<div id="chat-log" class="chat-log"></div>
+
+<div class="chat-bar">
+  <textarea class="form-input" id="chat-q" placeholder="例如：swing 分數怎麼算的？／ NVDA 現在的短線訊號如何？"></textarea>
+  <button class="btn btn-cta" id="chat-send">送出</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/chat.js"></script>
+{% endblock %}

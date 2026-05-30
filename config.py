@@ -67,6 +67,7 @@ FEATURE_FLAGS = {
     'THEME_RESEARCH': _env_bool(
         'ENABLE_THEME_RESEARCH', False
     ),  # 題材掃描+研究+PDF（需 agy / Gemini）
+    'AI_CHAT': _env_bool('ENABLE_AI_CHAT', False),  # /chat 問答（密碼保護，需 GEMINI_API_KEYS）
     'TELEGRAM_BOT': _env_bool('ENABLE_TELEGRAM_BOT', False),  # 需 Telegram token
     'BG_WORKERS': _env_bool('ENABLE_BG_WORKERS', True),
 }

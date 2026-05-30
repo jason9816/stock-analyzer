@@ -42,6 +42,7 @@
     {% if market == 'tw' and flags.US_MARKET %}<a href="/">美股</a>{% endif %}
     {% if market != 'tw' and flags.TW_MARKET %}<a href="/tw">台股</a>{% endif %}
     {% if flags.TRADING %}<a href="/trading">交易面板</a>{% endif %}
+    {% if flags.AI_CHAT %}<a href="/chat">AI 問答</a>{% endif %}
   </div>
   <div class="market-bar">
     {% if market == 'tw' %}
