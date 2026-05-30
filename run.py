@@ -19,12 +19,19 @@ app = create_app()
 
 
 def _start_scheduler():
-    """排程：大盤快取更新（依 flag 啟用）。"""
+    """排程：大盤快取更新、每日題材研究報告（依 flag 啟用）。"""
     from core.indicators import refresh_all_index_cache
 
     schedule.every().day.at("09:00").do(
         lambda: threading.Thread(target=refresh_all_index_cache, daemon=True).start()
     )
+
+    if FEATURE_FLAGS['THEME_RESEARCH']:
+        from services.research import daily_report
+
+        schedule.every().day.at("08:00").do(
+            lambda: threading.Thread(target=daily_report, daemon=True).start()
+        )
 
     def _loop():
         print("⏰ 排程已啟動")

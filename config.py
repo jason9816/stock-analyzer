@@ -46,6 +46,9 @@ CLAUDE_PROXY_URL = os.environ.get('CLAUDE_PROXY_URL', 'http://localhost:4141')
 MD_TO_PDF_PATH = os.environ.get('MD_TO_PDF_PATH') or shutil.which('md-to-pdf') or 'md-to-pdf'
 AGY_PATH = os.environ.get('AGY_PATH') or shutil.which('agy') or 'agy'
 
+# ── 題材研究後端（可抽換：agy / …）──────────────────────
+RESEARCH_PROVIDER = os.environ.get('RESEARCH_PROVIDER', 'agy').strip().lower()
+
 # ── 對外導出（可抽換：none / ngrok）──────────────────────
 TUNNEL_PROVIDER = os.environ.get('TUNNEL_PROVIDER', 'none').strip().lower()
 # 可填多把 token（逗號分隔），第一把流量爆了會自動切下一把
@@ -61,6 +64,9 @@ FEATURE_FLAGS = {
     'AI_ANALYSIS': _env_bool('ENABLE_AI_ANALYSIS', True),  # 需 GEMINI_API_KEYS
     'TRADING': _env_bool('ENABLE_TRADING', False),  # 需 Alpaca key
     'STRATEGY': _env_bool('ENABLE_STRATEGY', False),
+    'THEME_RESEARCH': _env_bool(
+        'ENABLE_THEME_RESEARCH', False
+    ),  # 題材掃描+研究+PDF（需 agy / Gemini）
     'TELEGRAM_BOT': _env_bool('ENABLE_TELEGRAM_BOT', False),  # 需 Telegram token
     'BG_WORKERS': _env_bool('ENABLE_BG_WORKERS', True),
 }
