@@ -1,0 +1,18 @@
+# ── 核心（必裝）──────────────────────────────────────────
+flask==3.1.3              # Web 框架
+python-dotenv==1.2.2      # 讀取 .env 密鑰
+yfinance==1.3.0           # 股價/基本面資料
+pandas==3.0.0             # 資料處理
+numpy==2.4.1              # 數值計算
+requests==2.32.5          # HTTP（TWSE、Telegram、Gemini）
+lxml==6.0.2               # yfinance 解析 HTML 需要
+beautifulsoup4==4.14.3    # 新聞/網頁解析
+schedule==1.2.2           # 每日排程任務
+
+# ── 選用功能 ─────────────────────────────────────────────
+alpaca-py==0.43.4         # 模擬交易（ENABLE_TRADING）
+pyngrok==8.0.0            # ngrok 對外導出（TUNNEL_PROVIDER=ngrok）
+
+# ── 外部工具（非 pip，選用）──────────────────────────────
+# PDF 研究報告需要 node 套件：  npm install -g md-to-pdf
+# 深度題材研究（Telegram bot）需要 Gemini CLI「agy」，見 README
